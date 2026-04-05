@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "MajorTom",
+  "version": "0.1.0",
+  "description": "Dual subtitles for language learning",
+  "permissions": ["storage"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://*.zdf.de/*",
+        "*://*.ardmediathek.de/*"
+      ],
+      "js": ["content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "MajorTom"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["*://*.youtube.com/*", "*://*.zdf.de/*", "*://*.ardmediathek.de/*"]
+    }
+  ]
+}
