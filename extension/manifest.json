@@ -10,8 +10,7 @@
     "*://*.ardmediathek.de/*",
     "*://api.ardmediathek.de/*",
     "*://utstreaming.zdf.de/*",
-    "*://api.zdf.de/*",
-    "*://translate.googleapis.com/*"
+    "*://api.zdf.de/*"
   ],
   "background": {
     "service_worker": "background.js"

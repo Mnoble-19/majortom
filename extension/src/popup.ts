@@ -1,14 +1,39 @@
-import { getSavedWords, toggleStar, unsaveWord } from './storage';
+import { getSavedWords, toggleStar, getState, setState } from './storage';
 
-async function renderPopup() {
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const target = (tab as HTMLElement).dataset.tab!;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(`tab-${target}`)!.classList.add('active');
+  });
+});
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+async function initSettings() {
+  const state = await getState();
+  const primaryEl = document.getElementById('primaryLang') as HTMLSelectElement;
+  const secondaryEl = document.getElementById('secondaryLang') as HTMLSelectElement;
+
+  primaryEl.value = state.primaryLang;
+  secondaryEl.value = state.secondaryLang;
+
+  primaryEl.addEventListener('change', () => setState({ primaryLang: primaryEl.value }));
+  secondaryEl.addEventListener('change', () => setState({ secondaryLang: secondaryEl.value }));
+}
+
+// ── Words ─────────────────────────────────────────────────────────────────────
+async function renderWords() {
   const words = await getSavedWords();
   const list = document.getElementById('wordList')!;
   const stats = document.getElementById('stats')!;
 
-  stats.textContent = `${words.length} saved words`;
+  stats.textContent = `${words.length} saved word${words.length !== 1 ? 's' : ''}`;
 
   if (words.length === 0) {
-    list.innerHTML = '<div class="empty">No saved words yet. Click words in subtitles to save them.</div>';
+    list.innerHTML = '<div class="empty">No saved words yet.<br>Click words in subtitles to save them.</div>';
     return;
   }
 
@@ -22,7 +47,7 @@ async function renderPopup() {
   list.innerHTML = '';
   grouped.forEach((items, group) => {
     const header = document.createElement('div');
-    header.style.cssText = 'font-size:12px;color:#888;margin:8px 0 4px;';
+    header.className = 'group-header';
     header.textContent = group;
     list.appendChild(header);
 
@@ -45,9 +70,10 @@ async function renderPopup() {
     star.addEventListener('click', async (e) => {
       const word = (e.target as HTMLElement).dataset.word!;
       await toggleStar(word);
-      renderPopup();
+      renderWords();
     });
   });
 }
 
-renderPopup();
+initSettings();
+renderWords();

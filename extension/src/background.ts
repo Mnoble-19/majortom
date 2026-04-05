@@ -24,17 +24,23 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+function bgLog(msg: string) {
+  console.log('[MajorTom BG]', msg);
+  fetch('http://localhost:7777', { method: 'POST', body: `[BG] ${msg}` }).catch(() => {});
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'FETCH_SUBTITLE') {
+    bgLog(`fetching ${msg.url.substring(0, 100)}`);
     fetch(msg.url, { credentials: 'include' })
       .then(async r => {
         const text = await r.text();
-        console.log('[MajorTom BG] fetch', msg.url.substring(0, 80), 'status:', r.status, 'length:', text.length);
+        bgLog(`fetch status:${r.status} length:${text.length} url:${msg.url.substring(0, 80)}`);
         return text;
       })
       .then(text => sendResponse({ content: text }))
       .catch(e => {
-        console.error('[MajorTom BG] fetch error:', e);
+        bgLog(`fetch error: ${e?.message} url:${msg.url.substring(0, 80)}`);
         sendResponse({ content: '' });
       });
     return true;
