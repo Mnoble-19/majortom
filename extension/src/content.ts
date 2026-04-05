@@ -1,136 +1,88 @@
-import { SubtitleTrack } from './types';
-import { parseYouTubeXML, parseVTT } from './parsers';
 import { SubtitleOverlay } from './overlay';
+import { translate } from './translate';
+import { log } from './logger';
+
+const PRIMARY_LANG = 'de';
+const SECONDARY_LANG = 'en';
 
 let overlay: SubtitleOverlay | null = null;
-
-function injectPageScript() {
-  const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('injected.js');
-  (document.head || document.documentElement).appendChild(script);
-  script.onload = () => script.remove();
-}
-
-function getVideoElement(): HTMLVideoElement | null {
-  return document.querySelector('video');
-}
-
-function getVideoContainer(): HTMLElement | null {
-  const hostname = window.location.hostname;
-  if (hostname.includes('youtube.com')) {
-    return document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
-  }
-  if (hostname.includes('zdf.de') || hostname.includes('ardmediathek.de')) {
-    const video = getVideoElement();
-    return video?.closest('.player-container') || video?.parentElement || null;
-  }
-  return null;
-}
-
-async function fetchSubtitleContent(url: string): Promise<string> {
-  const resp = await fetch(url);
-  return resp.text();
-}
-
-async function loadTrack(track: SubtitleTrack, allTracks: SubtitleTrack[]): Promise<import('./types').Cue[]> {
-  const langCode = track.languageCode;
-  const isMachineTranslate = langCode.startsWith('mt:');
-
-  if (isMachineTranslate) {
-    const targetLang = langCode.replace('mt:', '');
-    const sourceTrack = allTracks.find(t => !t.languageCode.startsWith('mt:') && t.isTranslatable);
-    if (!sourceTrack) return [];
-    const mtUrl = sourceTrack.url + `&tlang=${targetLang}`;
-    const xml = await fetchSubtitleContent(mtUrl);
-    return parseYouTubeXML(xml);
-  }
-
-  const content = await fetchSubtitleContent(track.url);
-  if (content.trim().startsWith('WEBVTT') || content.includes('-->')) {
-    return parseVTT(content);
-  }
-  return parseYouTubeXML(content);
-}
-
-async function handleTracksDiscovered(tracks: SubtitleTrack[], title: string) {
-  const video = getVideoElement();
-  const container = getVideoContainer();
-  if (!video || !container) return;
-
-  if (overlay) overlay.unmount();
-  overlay = new SubtitleOverlay(video);
-  overlay.setTitle(title);
-  overlay.mount(container);
-
-  overlay.populateLanguageSelectors(tracks, async (primaryLang, secondaryLang) => {
-    const primaryTrack = tracks.find(t => t.languageCode === primaryLang)
-      || { languageCode: primaryLang, label: primaryLang, url: '' };
-    const secondaryTrack = tracks.find(t => t.languageCode === secondaryLang)
-      || { languageCode: secondaryLang, label: secondaryLang, url: '' };
-
-    const [primaryCues, secondaryCues] = await Promise.all([
-      loadTrack(primaryTrack, tracks),
-      loadTrack(secondaryTrack, tracks),
-    ]);
-
-    overlay!.setCues(primaryCues, secondaryCues);
-  });
-}
-
-function initYouTube() {
-  injectPageScript();
-
-  window.addEventListener('message', (e) => {
-    if (e.data?.type === 'MAJORTOM_TRACKS') {
-      handleTracksDiscovered(e.data.tracks, e.data.title);
-    }
-  });
-}
-
-function initZDFARD() {
-  const observer = new MutationObserver(() => {
-    const video = getVideoElement();
-    if (!video) return;
-
-    const trackEls = video.querySelectorAll('track');
-    if (trackEls.length === 0) {
-      const allTracks = document.querySelectorAll('track');
-      if (allTracks.length === 0) return;
-    }
-
-    observer.disconnect();
-
-    const tracks: SubtitleTrack[] = [];
-    document.querySelectorAll('track').forEach(el => {
-      const src = el.getAttribute('src');
-      const label = el.getAttribute('label') || el.getAttribute('srclang') || 'Unknown';
-      const lang = el.getAttribute('srclang') || 'unknown';
-      if (src) {
-        tracks.push({
-          label,
-          languageCode: lang,
-          url: new URL(src, window.location.href).href,
-        });
-      }
-    });
-
-    const title = document.title.replace(/ - ZDF| - ARD/i, '').trim();
-    if (tracks.length > 0) {
-      handleTracksDiscovered(tracks, title);
-    }
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-}
+let syncInterval: ReturnType<typeof setInterval> | null = null;
 
 function init() {
   const hostname = window.location.hostname;
+  log.info('MajorTom init on', hostname);
 
   if (hostname.includes('youtube.com')) {
     initYouTube();
-  } else if (hostname.includes('zdf.de') || hostname.includes('ardmediathek.de')) {
-    initZDFARD();
   }
+}
+
+function initYouTube() {
+  const tryStart = () => {
+    const video = document.querySelector('video') as HTMLVideoElement;
+    const container = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+    if (!video || !container) {
+      setTimeout(tryStart, 500);
+      return;
+    }
+    startDomReading(video, container as HTMLElement);
+  };
+
+  tryStart();
+
+  window.addEventListener('yt-navigate-finish', () => {
+    cleanup();
+    setTimeout(tryStart, 1000);
+  });
+}
+
+function startDomReading(video: HTMLVideoElement, container: HTMLElement) {
+  cleanup();
+
+  overlay = new SubtitleOverlay(video);
+  overlay.setTitle(document.title);
+  overlay.mount(container);
+
+  const style = document.createElement('style');
+  style.id = 'majortom-hide-native';
+  style.textContent = `.ytp-caption-window-container { opacity: 0.01 !important; pointer-events: none !important; }`;
+  document.head.appendChild(style);
+
+  let lastText = '';
+  let lastNonEmpty = '';
+  let emptyAt = 0;
+  let lastTranslated = '';
+  let translated = '';
+
+  syncInterval = setInterval(() => {
+    const segments = document.querySelectorAll('.ytp-caption-segment');
+    const text = Array.from(segments).map(s => s.textContent?.trim()).filter(Boolean).join(' ');
+
+    if (text && text !== lastText) {
+      lastText = text;
+      lastNonEmpty = text;
+      emptyAt = 0;
+    } else if (!text && lastText) {
+      lastText = '';
+      emptyAt = Date.now();
+    }
+
+    const display = text || (emptyAt && Date.now() - emptyAt < 2000 ? lastNonEmpty : '');
+    if (display && display !== lastTranslated) {
+      lastTranslated = display;
+      translate(display, PRIMARY_LANG, SECONDARY_LANG).then(t => { translated = t; });
+    }
+    if (!display) translated = '';
+    overlay?.setLiveText(display, translated);
+  }, 50);
+
+  log.info('DOM reading started');
+}
+
+function cleanup() {
+  if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
+  if (overlay) { overlay.unmount(); overlay = null; }
+  document.getElementById('majortom-hide-native')?.remove();
 }
 
 init();

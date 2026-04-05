@@ -4,6 +4,15 @@
   "version": "0.1.0",
   "description": "Dual subtitles for language learning",
   "permissions": ["storage"],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://*.zdf.de/*",
+    "*://*.ardmediathek.de/*",
+    "*://api.ardmediathek.de/*",
+    "*://utstreaming.zdf.de/*",
+    "*://api.zdf.de/*",
+    "*://translate.googleapis.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
