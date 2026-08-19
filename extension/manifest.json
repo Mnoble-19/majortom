@@ -1,40 +1,42 @@
 {
   "manifest_version": 3,
   "name": "MajorTom",
-  "version": "0.1.0",
-  "description": "Dual subtitles for language learning",
+  "version": "0.2.0",
+  "description": "Dual subtitles and click-to-save vocabulary on any video site.",
   "permissions": ["storage"],
-  "host_permissions": [
-    "*://*.youtube.com/*",
-    "*://*.zdf.de/*",
-    "*://*.ardmediathek.de/*",
-    "*://api.ardmediathek.de/*",
-    "*://utstreaming.zdf.de/*",
-    "*://api.zdf.de/*"
-  ],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": [
-        "*://*.youtube.com/*",
-        "*://*.zdf.de/*",
-        "*://*.ardmediathek.de/*"
-      ],
+      "matches": ["<all_urls>"],
+      "js": ["injected.js"],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "css": ["overlay.css"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "MajorTom"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["injected.js"],
-      "matches": ["*://*.youtube.com/*", "*://*.zdf.de/*", "*://*.ardmediathek.de/*"]
+    "default_title": "MajorTom",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
     }
-  ]
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
 }

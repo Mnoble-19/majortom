@@ -1,18 +1,28 @@
-const LOG_URL = 'http://localhost:7777';
+import { DEV } from './config';
 
-function send(level: string, ...args: any[]) {
-  const msg = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
-  const prefix = `[MajorTom:${level}]`;
-  // Always log to browser console
-  if (level === 'error') console.error(prefix, msg);
-  else if (level === 'warn') console.warn(prefix, msg);
-  else console.log(prefix, msg);
-  // Best-effort send to local log server
-  fetch(LOG_URL, { method: 'POST', body: `[${level.toUpperCase()}] ${msg}` }).catch(() => {});
+const PREFIX = '[MajorTom]';
+
+/**
+ * Dev builds mirror logs to the local log server (`npm run logs`) so behaviour
+ * inside a page can be read without keeping devtools open. Production builds
+ * compile all of this away and never touch the network.
+ */
+function send(level: 'info' | 'warn' | 'error', args: unknown[]) {
+  const fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
+  fn(PREFIX, ...args);
+  if (!DEV) return;
+  try {
+    const msg = args
+      .map(a => (typeof a === 'string' ? a : (() => { try { return JSON.stringify(a); } catch { return String(a); } })()))
+      .join(' ');
+    fetch('http://localhost:7777', { method: 'POST', body: `[${level.toUpperCase()}] ${msg}` }).catch(() => {});
+  } catch {
+    /* logging must never break the page */
+  }
 }
 
 export const log = {
-  info:  (...args: any[]) => send('info',  ...args),
-  warn:  (...args: any[]) => send('warn',  ...args),
-  error: (...args: any[]) => send('error', ...args),
+  info: (...a: unknown[]) => send('info', a),
+  warn: (...a: unknown[]) => send('warn', a),
+  error: (...a: unknown[]) => send('error', a),
 };

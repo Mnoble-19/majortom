@@ -1,38 +1,55 @@
 import { build, context } from 'esbuild';
-import { copyFileSync, watch as fsWatch } from 'fs';
+import { copyFileSync, mkdirSync, cpSync, existsSync } from 'fs';
 
-const isWatch = process.argv.includes('--watch');
+const watch = process.argv.includes('--watch');
+// Dev builds keep the local log-server mirroring; production compiles it out.
+const dev = watch || process.argv.includes('--dev');
+
+const OUT = 'dist/extension';
 
 const common = {
   bundle: true,
-  minify: false,
-  sourcemap: true,
+  format: 'iife',
   target: 'chrome120',
+  sourcemap: dev,
+  minify: !dev,
+  legalComments: 'none',
+  define: { __MT_DEV__: String(dev) },
 };
 
-const configs = [
-  { ...common, entryPoints: ['extension/src/content.ts'], outfile: 'dist/extension/content.js' },
-  { ...common, entryPoints: ['extension/src/injected.ts'], outfile: 'dist/extension/injected.js' },
-  { ...common, entryPoints: ['extension/src/background.ts'], outfile: 'dist/extension/background.js' },
-  { ...common, entryPoints: ['extension/src/popup.ts'], outfile: 'dist/extension/popup.js' },
+const entries = [
+  ['extension/src/content.ts', `${OUT}/content.js`],
+  ['extension/src/injected.ts', `${OUT}/injected.js`],
+  ['extension/src/background.ts', `${OUT}/background.js`],
+  ['extension/src/popup.ts', `${OUT}/popup.js`],
 ];
 
+const configs = entries.map(([entryPoint, outfile]) => ({
+  ...common,
+  entryPoints: [entryPoint],
+  outfile,
+}));
+
 function copyStatic() {
-  copyFileSync('extension/manifest.json', 'dist/extension/manifest.json');
-  copyFileSync('extension/overlay.css', 'dist/extension/overlay.css');
-  copyFileSync('extension/src/popup.html', 'dist/extension/popup.html');
+  mkdirSync(OUT, { recursive: true });
+  copyFileSync('extension/manifest.json', `${OUT}/manifest.json`);
+  copyFileSync('extension/src/popup.html', `${OUT}/popup.html`);
+  if (existsSync('extension/icons')) {
+    cpSync('extension/icons', `${OUT}/icons`, { recursive: true });
+  }
 }
 
-if (isWatch) {
+if (watch) {
   for (const config of configs) {
     const ctx = await context(config);
     await ctx.watch();
   }
   copyStatic();
+  const { watch: fsWatch } = await import('fs');
   fsWatch('extension', { recursive: true }, () => copyStatic());
-  console.log('watching... static files auto-copied');
+  console.log(`watching (dev build) → ${OUT}`);
 } else {
   await Promise.all(configs.map(c => build(c)));
   copyStatic();
-  console.log('built.');
+  console.log(`built ${dev ? 'dev' : 'production'} → ${OUT}`);
 }

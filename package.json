@@ -1,12 +1,15 @@
 {
   "name": "majortom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build:ext": "node esbuild.config.mjs",
-    "watch:ext": "node esbuild.config.mjs --watch",
-    "build:desktop": "cd desktop && npm run build",
-    "dev:desktop": "cd desktop && npm run dev"
+    "build": "npm run icons && node esbuild.config.mjs",
+    "dev": "npm run icons && node esbuild.config.mjs --watch",
+    "icons": "node scripts/make-icons.mjs",
+    "logs": "node logserver.mjs",
+    "typecheck": "tsc --noEmit",
+    "smoke": "esbuild scripts/smoke.ts --bundle --platform=node --format=esm --define:__MT_DEV__=false --outfile=dist/smoke.mjs --log-level=warning && node dist/smoke.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",
