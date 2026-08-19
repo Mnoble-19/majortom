@@ -136,10 +136,7 @@
 
     track.addEventListener('cuechange', () => emitTrack(track, id));
     // Streaming players append cues over time and fire no event for it.
-    const poll = setInterval(() => {
-      if (!document.contains(document.querySelector('video'))) { /* keep polling */ }
-      emitTrack(track, id);
-    }, 1500);
+    const poll = setInterval(() => emitTrack(track, id), 1500);
     setTimeout(() => clearInterval(poll), 10 * 60 * 1000);
     emitTrack(track, id);
   }
@@ -175,7 +172,7 @@
   }
 
   const origFetch = window.fetch;
-  window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
+  window.fetch = function (input: RequestInfo | URL) {
     const url = typeof input === 'string' ? input
       : input instanceof URL ? input.href
       : (input as Request)?.url || '';

@@ -1,4 +1,4 @@
-import { Cue } from './types';
+import { Cue } from '../shared/types';
 
 export type SubFormat = 'json3' | 'vtt' | 'ttml' | 'srt' | 'unknown';
 

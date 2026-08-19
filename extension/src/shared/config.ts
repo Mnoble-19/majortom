@@ -1,8 +1,10 @@
 import { Settings } from './types';
 
-/** Flipped to false by the production build (see esbuild.config.mjs). */
-export const DEV = typeof __MT_DEV__ !== 'undefined' ? __MT_DEV__ : false;
+/** Injected at build time by esbuild's `define`. */
 declare const __MT_DEV__: boolean;
+
+/** True only in dev builds; production compiles the dev-only branches away. */
+export const DEV = typeof __MT_DEV__ !== 'undefined' ? __MT_DEV__ : false;
 
 export const DEFAULT_SETTINGS: Settings = {
   enabled: true,

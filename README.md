@@ -78,6 +78,31 @@ badly. Cues are regrouped into whole sentences first; the sentence translation
 is then shown for every cue it spans, so the translation line stays steady while
 the original advances through it.
 
+## Layout
+
+```
+extension/
+  manifest.json
+  src/
+    content.ts              orchestrator: discovery, sync loop, keyboard
+    background.ts           service worker: fetch proxy + translation router
+    capture/
+      injected.ts           MAIN world: text-track + network hooks
+      parsers.ts            VTT / TTML / SRT / json3 → Cue[]
+      adapters/             one file per site; register in index.ts
+    translate/
+      index.ts              sentence regrouping, caching, orchestration
+      deepl.ts              provider (a local-model provider goes beside it)
+    ui/
+      overlay.ts            the on-video overlay (shadow DOM)
+      popup.ts / popup.html
+    shared/                 types, config, logger, storage, messaging
+scripts/                    icons, smoke tests, dev log server
+```
+
+Adding a site means writing one file in `capture/adapters/` and listing it in
+that folder's `index.ts`. Nothing else needs to change.
+
 ## Development
 
 ```bash

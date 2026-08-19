@@ -1,9 +1,9 @@
-import { Settings, VocabEntry } from './types';
-import { SOURCE_LANGS, TARGET_LANGS } from './config';
+import { Settings, VocabEntry } from '../shared/types';
+import { SOURCE_LANGS, TARGET_LANGS } from '../shared/config';
 import {
   getSettings, setSettings, getVocab, toggleStar, removeWord, clearCache,
-} from './storage';
-import { bgTranslate } from './messaging';
+} from '../shared/storage';
+import { bgTranslate } from '../shared/messaging';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 

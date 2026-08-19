@@ -17,11 +17,12 @@ const common = {
   define: { __MT_DEV__: String(dev) },
 };
 
+// Each entry maps to one file named in the manifest.
 const entries = [
   ['extension/src/content.ts', `${OUT}/content.js`],
-  ['extension/src/injected.ts', `${OUT}/injected.js`],
+  ['extension/src/capture/injected.ts', `${OUT}/injected.js`],
   ['extension/src/background.ts', `${OUT}/background.js`],
-  ['extension/src/popup.ts', `${OUT}/popup.js`],
+  ['extension/src/ui/popup.ts', `${OUT}/popup.js`],
 ];
 
 const configs = entries.map(([entryPoint, outfile]) => ({
@@ -33,7 +34,7 @@ const configs = entries.map(([entryPoint, outfile]) => ({
 function copyStatic() {
   mkdirSync(OUT, { recursive: true });
   copyFileSync('extension/manifest.json', `${OUT}/manifest.json`);
-  copyFileSync('extension/src/popup.html', `${OUT}/popup.html`);
+  copyFileSync('extension/src/ui/popup.html', `${OUT}/popup.html`);
   if (existsSync('extension/icons')) {
     cpSync('extension/icons', `${OUT}/icons`, { recursive: true });
   }

@@ -7,12 +7,13 @@
     "build": "npm run icons && node esbuild.config.mjs",
     "dev": "npm run icons && node esbuild.config.mjs --watch",
     "icons": "node scripts/make-icons.mjs",
-    "logs": "node logserver.mjs",
+    "logs": "node scripts/logserver.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "esbuild scripts/smoke.ts --bundle --platform=node --format=esm --define:__MT_DEV__=false --outfile=dist/smoke.mjs --log-level=warning && node dist/smoke.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",
+    "@types/node": "^22.20.1",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.0"
   }

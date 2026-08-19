@@ -4,11 +4,14 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": ".",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["chrome", "node"]
   },
-  "include": ["extension/src/**/*"]
+  "include": ["extension/src/**/*", "scripts/**/*"]
 }

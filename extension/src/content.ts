@@ -1,14 +1,14 @@
-import { Cue, CueTrack, MediaInfo, PageMessage, Settings, VocabEntry } from './types';
-import { NATIVE_CAPTION_SELECTORS } from './config';
-import { adapterFor, mediaInfo, Adapter } from './adapters';
-import { parse, cueIndexAt } from './parsers';
-import { Overlay, norm } from './overlay';
+import { CueTrack, MediaInfo, PageMessage, Settings, VocabEntry } from './shared/types';
+import { NATIVE_CAPTION_SELECTORS } from './shared/config';
+import { adapterFor, mediaInfo, Adapter } from './capture/adapters';
+import { parse, cueIndexAt } from './capture/parsers';
+import { Overlay } from './ui/overlay';
 import { SecondaryLines, translateCues, translateOne } from './translate';
 import {
   getSettings, onSettingsChanged, setSettings, isHostEnabled,
   getVocab, addWord, removeWordEverywhere,
-} from './storage';
-import { log } from './logger';
+} from './shared/storage';
+import { log } from './shared/logger';
 
 /** How much a source is trusted; a higher-ranked track replaces a lower one. */
 const SOURCE_RANK = { adapter: 4, texttrack: 3, network: 2, dom: 1 } as const;
@@ -28,7 +28,12 @@ let cueHint = 0;
 let currentIndex = -1;
 let pausedForCue = -1;
 let currentKey = '';
+
+/** Bumped on navigation so in-flight async work knows it is stale. */
 let translateToken = 0;
+let adapterToken = 0;
+/** Generic capture stays off until a video actually shows up on the page. */
+let pageActivated = false;
 
 /* ── Boot ─────────────────────────────────────────────────────────────────── */
 
@@ -98,7 +103,6 @@ function tick() {
     if (best) mountOverlay();
   }
 }
-let pageActivated = false;
 
 function onMediaChanged() {
   log.info('media changed →', location.href.slice(0, 120));
@@ -131,7 +135,6 @@ async function resolveViaAdapter() {
     log.warn(`adapter ${adapter.id} failed:`, (e as Error)?.message);
   }
 }
-let adapterToken = 0;
 
 /** Accept a candidate track, keeping the best source seen for this media. */
 function offerTrack(track: CueTrack) {
@@ -201,7 +204,7 @@ async function runTranslation() {
 
   if (token !== translateToken) return;
   secondary = lines;
-  overlay?.setStatus(lines.some(Boolean) ? '' : '');
+  overlay?.setStatus('');
 }
 
 /* ── Overlay + playback sync ──────────────────────────────────────────────── */

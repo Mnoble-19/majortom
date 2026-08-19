@@ -66,7 +66,7 @@ export interface VocabEntry {
 export type PageMessage =
   | { src: 'majortom'; kind: 'track-cues'; trackId: string; lang: string; label: string; cues: Cue[] }
   | { src: 'majortom'; kind: 'sub-file'; url: string; body: string }
-  | { src: 'majortom'; kind: 'media-meta'; title: string; extra?: Record<string, unknown> };
+  | { src: 'majortom'; kind: 'media-meta'; title: string };
 
 /* ── Messages: content/popup → background service worker ───────────────────── */
 

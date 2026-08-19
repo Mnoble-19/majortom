@@ -1,4 +1,4 @@
-import { Settings } from './types';
+import { Settings } from '../shared/types';
 
 export interface OverlayHooks {
   isSaved(word: string): boolean;
@@ -109,6 +109,7 @@ export class Overlay {
   private cardTr!: HTMLElement;
   private cardSave!: HTMLButtonElement;
   private bar: HTMLElement;
+  private barToggles!: { blur: HTMLButtonElement; pause: HTMLButtonElement };
 
   private lastPrimary = '';
   private lastSecondary = '';
@@ -361,8 +362,6 @@ export class Overlay {
     this.barToggles = { blur, pause };
     return bar;
   }
-
-  private barToggles!: { blur: HTMLButtonElement; pause: HTMLButtonElement };
 
   /* ── Settings ───────────────────────────────────────────────────────────── */
 

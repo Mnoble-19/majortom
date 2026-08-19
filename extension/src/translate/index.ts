@@ -1,8 +1,8 @@
-import { Cue, MediaInfo, Settings } from './types';
-import { Adapter } from './adapters';
-import { bgTranslate } from './messaging';
-import { getCached, setCached } from './storage';
-import { log } from './logger';
+import { Cue, MediaInfo, Settings } from '../shared/types';
+import { Adapter } from '../capture/adapters';
+import { bgTranslate } from '../shared/messaging';
+import { getCached, setCached } from '../shared/storage';
+import { log } from '../shared/logger';
 
 /** Translations indexed by primary-cue position, so rendering is a lookup. */
 export type SecondaryLines = string[];
