@@ -38,6 +38,8 @@ export interface Settings {
   blurSecondary: boolean;
   /** Pause automatically at the end of every cue. */
   autoPause: boolean;
+  /** Repeat the current line until you move on — for shadowing practice. */
+  loopCue: boolean;
   showSecondary: boolean;
   hideNativeCaptions: boolean;
   fontScale: number;

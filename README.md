@@ -40,6 +40,7 @@ Translations are cached per video, so rewatching costs nothing.
 | `]` | Next subtitle |
 | `\` | Replay the current subtitle |
 | `P` | Toggle auto-pause at the end of each line |
+| `L` | Loop the current line (shadowing practice) |
 | `H` | Toggle the blurred translation ("guess first") |
 
 Bracket keys are used deliberately: every video site already claims the letters
@@ -118,10 +119,11 @@ out entirely and never touch the network for logging.
 
 ## Known gaps
 
-- **Netflix, Disney+ and other DRM sites** are not covered. They render captions
-  with custom renderers and fetch them in ways the generic layers miss; each
-  needs an adapter. The DOM-scraping layer that would cover them generically is
-  designed for but not implemented.
+- **Netflix, Disney+ and other DRM sites are unverified.** The network layer
+  content-sniffs response bodies (not just URLs) while it has no cues, which is
+  the mechanism that *could* pick them up — but this has never been tested
+  against either service, so treat it as untried rather than supported. A
+  confirmed fix would most likely be a small adapter per service.
 - **ZDF** relies on scraping subtitle URLs out of the page, which is more
   fragile than ARD's API path.
 - **Live streams** work, but translation only covers cues that have arrived.

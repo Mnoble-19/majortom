@@ -13,11 +13,28 @@ interface YtTrack {
  * YouTube's caption track list lives on `ytInitialPlayerResponse`, in the page
  * world. The MAIN-world capture script copies it onto a DOM attribute so we can
  * read it synchronously here instead of racing a message.
+ *
+ * The payload is stamped with the video id, and we refuse it when it does not
+ * match the current URL — YouTube navigates before it refreshes that object, so
+ * an unchecked read hands back the *previous* video's subtitles.
  */
-function tracks(): YtTrack[] {
-  const raw = document.documentElement.getAttribute('data-majortom-yt');
+export function parseYtPayload(raw: string | null, wantedId: string | null): YtTrack[] {
   if (!raw) return [];
-  try { return JSON.parse(raw) as YtTrack[]; } catch { return []; }
+  try {
+    const data = JSON.parse(raw) as { v?: string; tracks?: YtTrack[] };
+    // Reject a payload that belongs to a different video than the URL names.
+    if (wantedId && data.v && data.v !== wantedId) return [];
+    return Array.isArray(data.tracks) ? data.tracks : [];
+  } catch {
+    return [];
+  }
+}
+
+function tracks(): YtTrack[] {
+  return parseYtPayload(
+    document.documentElement.getAttribute('data-majortom-yt'),
+    new URLSearchParams(location.search).get('v'),
+  );
 }
 
 /** Prefer an authored track over YouTube's automatic speech transcript. */

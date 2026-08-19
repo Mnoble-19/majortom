@@ -9,7 +9,7 @@
  */
 import { parse, cueIndexAt, detectFormat } from '../extension/src/capture/parsers';
 import { groupSentences } from '../extension/src/translate';
-import { pickArdSubtitleUrl } from '../extension/src/capture/adapters';
+import { pickArdSubtitleUrl, parseYtPayload } from '../extension/src/capture/adapters';
 
 let failures = 0;
 
@@ -162,6 +162,26 @@ console.log('\nARD subtitle URL extraction');
     'https://x/player-service/subtitle/ebutt/urn:ard:subtitle:z');
   eq('null when absent', pickArdSubtitleUrl({ nothing: 'here' }), null);
   eq('survives odd shapes', pickArdSubtitleUrl([null, 1, 'str', { a: [undefined] }]), null);
+}
+
+/* ── YouTube track payload ────────────────────────────────────────────────── */
+
+console.log('\nYouTube stale-payload guard');
+{
+  const payload = (v: string) => JSON.stringify({
+    v, tracks: [{ baseUrl: `https://x/${v}`, languageCode: 'de', kind: 'asr' }],
+  });
+
+  eq('matching video id is accepted', parseYtPayload(payload('abc'), 'abc').length, 1);
+  // The bug this guards: YouTube changes the URL before refreshing the payload,
+  // so an unchecked read serves the previous video's subtitles.
+  eq('stale payload is rejected', parseYtPayload(payload('old'), 'new').length, 0);
+  eq('missing attribute', parseYtPayload(null, 'abc').length, 0);
+  eq('malformed json', parseYtPayload('{not json', 'abc').length, 0);
+  eq('unstamped payload still usable',
+    parseYtPayload(JSON.stringify({ tracks: [{ baseUrl: 'u', languageCode: 'de' }] }), 'abc').length, 1);
+  eq('no id in url falls through', parseYtPayload(payload('abc'), null).length, 1);
+  eq('tracks missing', parseYtPayload(JSON.stringify({ v: 'abc' }), 'abc').length, 0);
 }
 
 /* ── Live ARD (opt-in) ────────────────────────────────────────────────────── */

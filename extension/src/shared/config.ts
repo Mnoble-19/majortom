@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: Settings = {
   deeplKey: '',
   blurSecondary: false,
   autoPause: false,
+  loopCue: false,
   showSecondary: true,
   hideNativeCaptions: true,
   fontScale: 1,

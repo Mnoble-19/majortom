@@ -77,7 +77,8 @@ async function initSettings() {
     settings = await setSettings({ targetLang: (e.target as HTMLSelectElement).value });
   });
 
-  (['showSecondary', 'blurSecondary', 'autoPause', 'hideNativeCaptions'] as const).forEach(bindToggle);
+  (['showSecondary', 'blurSecondary', 'autoPause', 'loopCue', 'hideNativeCaptions'] as const)
+    .forEach(bindToggle);
 
   const font = $<HTMLInputElement>('fontScale');
   font.value = String(settings.fontScale);

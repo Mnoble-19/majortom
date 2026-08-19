@@ -22,6 +22,8 @@ let overlay: Overlay | null = null;
 let best: CueTrack | null = null;
 let secondary: SecondaryLines = [];
 let savedWords = new Set<string>();
+/** Word → translation, so re-clicking a recurring word costs nothing. */
+const lookupCache = new Map<string, string>();
 
 let rafId = 0;
 let cueHint = 0;
@@ -68,7 +70,11 @@ async function boot() {
 /** Tell the MAIN-world script whether to capture, and flush anything buffered. */
 function configurePage(active: boolean) {
   window.postMessage({
-    src: 'majortom-cfg', active, hideNative: settings?.hideNativeCaptions ?? true,
+    src: 'majortom-cfg',
+    active,
+    hideNative: settings?.hideNativeCaptions ?? true,
+    // Body sniffing is only worth its cost while we have nothing better.
+    hungry: !best,
   }, '*');
 }
 
@@ -100,7 +106,8 @@ function tick() {
       configurePage(true);
     }
     startSync();
-    if (best) mountOverlay();
+    mountOverlay();
+    if (adapter && !best) overlay?.setStatus('MajorTom: looking for subtitles…', 4000);
   }
 }
 
@@ -120,19 +127,38 @@ function onMediaChanged() {
 
 /* ── Cue acquisition ──────────────────────────────────────────────────────── */
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Sites publish their player metadata some time after navigation — YouTube in
+ * particular swaps the URL well before the new track list exists — so a single
+ * attempt loses the race on SPA navigations.
+ */
+const ADAPTER_RETRY_MS = [0, 500, 1200, 2500, 5000];
+
 async function resolveViaAdapter() {
   if (!adapter) return;
   const token = ++adapterToken;
-  try {
-    const tracks = await adapter.resolve();
-    if (token !== adapterToken) return; // navigated away mid-fetch
-    if (tracks.length === 0) {
-      log.info(`adapter ${adapter.id}: no subtitles — waiting for generic capture`);
-      return;
+
+  for (const delay of ADAPTER_RETRY_MS) {
+    if (delay) await sleep(delay);
+    if (token !== adapterToken) return; // navigated away mid-flight
+
+    try {
+      const tracks = await adapter.resolve();
+      if (token !== adapterToken) return;
+      if (tracks.length > 0) {
+        for (const t of tracks) offerTrack(t);
+        return;
+      }
+    } catch (e) {
+      log.warn(`adapter ${adapter.id} failed:`, (e as Error)?.message);
     }
-    for (const t of tracks) offerTrack(t);
-  } catch (e) {
-    log.warn(`adapter ${adapter.id} failed:`, (e as Error)?.message);
+  }
+
+  log.info(`adapter ${adapter.id}: no subtitles after retries`);
+  if (!best) {
+    overlay?.setStatus('MajorTom: no subtitles for this video', 6000);
   }
 }
 
@@ -147,10 +173,13 @@ function offerTrack(track: CueTrack) {
   }
 
   const isNew = !best || best.id !== track.id;
+  const wasHungry = !best;
   best = track;
   log.info(`cues: ${track.cues.length} from ${track.source} (${track.label})`);
+  if (wasHungry && pageActivated) configurePage(true); // stop body sniffing
 
   mountOverlay();
+  overlay?.setStatus('');
   if (isNew) void runTranslation();
 }
 
@@ -209,13 +238,25 @@ async function runTranslation() {
 
 /* ── Overlay + playback sync ──────────────────────────────────────────────── */
 
+/**
+ * Mounted as soon as a video exists rather than waiting for cues, so the
+ * status line can report what is happening — including that nothing was found.
+ */
 function mountOverlay() {
-  if (!video || !best || overlay) return;
+  if (!video || overlay) return;
   applyNativeCaptionCss();
 
   overlay = new Overlay(video, settings, {
     isSaved: w => savedWords.has(w),
-    lookup: w => translateOne(w, best?.lang || '', settings),
+    lookup: async w => {
+      const hit = lookupCache.get(w);
+      if (hit !== undefined) return hit;
+      const tr = await translateOne(w, best?.lang || '', settings);
+      // Cache misses too — a word that has no translation should not be
+      // re-requested every time it reappears on screen.
+      lookupCache.set(w, tr);
+      return tr;
+    },
     saveWord: async (word, translation) => {
       const entry: VocabEntry = {
         word,
@@ -272,9 +313,17 @@ function startSync() {
       overlay.setLines(best.cues[i].text, secondary[i] || '');
     }
 
-    if (settings.autoPause) autoPause(t);
+    if (settings.loopCue) loopCue(t);
+    else if (settings.autoPause) autoPause(t);
   };
   rafId = requestAnimationFrame(frame);
+}
+
+/** Jump back to the start of the current line as soon as it finishes. */
+function loopCue(t: number) {
+  if (!video || !best || video.paused) return;
+  const cue = best.cues[cueHint];
+  if (cue && t > cue.end) video.currentTime = cue.start + 0.01;
 }
 
 /**
@@ -367,6 +416,10 @@ function installKeyboard() {
       case 'h': case 'H':
         e.preventDefault(); e.stopPropagation();
         void setSettings({ blurSecondary: !settings.blurSecondary });
+        break;
+      case 'l': case 'L':
+        e.preventDefault(); e.stopPropagation();
+        void setSettings({ loopCue: !settings.loopCue });
         break;
       default: break;
     }

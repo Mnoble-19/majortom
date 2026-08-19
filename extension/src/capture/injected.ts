@@ -14,6 +14,8 @@
 
   let active = false;
   let hideNative = true;
+  /** True while the content script still has no cues, enabling body sniffing. */
+  let hungry = true;
   const pending: Pending[] = [];
   const MAX_PENDING = 25;
 
@@ -38,6 +40,7 @@
     if (e.source !== window || !d || d.src !== 'majortom-cfg') return;
     active = !!d.active;
     hideNative = !!d.hideNative;
+    hungry = d.hungry !== false;
     if (active) {
       while (pending.length) {
         const p = pending.shift()!;
@@ -62,27 +65,39 @@
       const tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
       if (!Array.isArray(tracks) || tracks.length === 0) return;
 
-      document.documentElement.setAttribute('data-majortom-yt', JSON.stringify(
-        tracks.map((t: any) => ({
+      // Stamped with the video id: YouTube swaps pages faster than it refreshes
+      // this object, and un-stamped data would load the previous video's track.
+      document.documentElement.setAttribute('data-majortom-yt', JSON.stringify({
+        v: pr?.videoDetails?.videoId || '',
+        tracks: tracks.map((t: any) => ({
           baseUrl: t.baseUrl,
           languageCode: t.languageCode,
           name: t.name?.simpleText || t.name?.runs?.[0]?.text || t.languageCode,
           kind: t.kind,
         })),
-      ));
+      }));
       const title = pr?.videoDetails?.title;
       if (title) post({ kind: 'media-meta', title });
     } catch { /* ignore */ }
   }
 
   if (location.hostname.endsWith('youtube.com')) {
+    // Drop stale data the instant navigation starts, then republish once the
+    // new player response has landed.
+    const refresh = () => {
+      document.documentElement.removeAttribute('data-majortom-yt');
+      exposeYouTubeTracks();
+      for (const delay of [400, 900, 1800]) setTimeout(exposeYouTubeTracks, delay);
+    };
+
     exposeYouTubeTracks();
     document.addEventListener('readystatechange', exposeYouTubeTracks);
-    window.addEventListener('yt-navigate-finish', () => setTimeout(exposeYouTubeTracks, 800));
+    window.addEventListener('yt-navigate-start', refresh);
+    window.addEventListener('yt-navigate-finish', refresh);
     const push = history.pushState;
     history.pushState = function (...args: Parameters<typeof history.pushState>) {
       const r = push.apply(this, args);
-      setTimeout(exposeYouTubeTracks, 1200);
+      refresh();
       return r;
     };
   }
@@ -171,6 +186,29 @@
     return !!contentType && SUB_TYPE.test(contentType);
   }
 
+  /**
+   * Some players fetch subtitles from opaque URLs with a generic content type,
+   * so the URL tells us nothing. While we still have no cues, fall back to
+   * sniffing the body itself. Requires a declared text-ish content type so we
+   * never buffer an unbounded stream.
+   */
+  function worthSniffing(res: Response): boolean {
+    if (!hungry) return false;
+    const ct = res.headers.get('content-type');
+    if (!ct || !/text|json|xml/i.test(ct)) return false;
+    const len = Number(res.headers.get('content-length') || 0);
+    return len > 0 && len <= 4 * 1024 * 1024;
+  }
+
+  function looksLikeSubtitles(body: string): boolean {
+    const head = body.slice(0, 300).trimStart();
+    if (!head) return false;
+    if (head.startsWith('WEBVTT')) return true;
+    if (/^<(\?xml|tt[\s>]|tt:tt)/i.test(head)) return true;
+    if (/^\d+\s*\r?\n\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->/.test(head)) return true;
+    return head.includes('-->') && /\d{2}:\d{2}/.test(head);
+  }
+
   const origFetch = window.fetch;
   window.fetch = function (input: RequestInfo | URL) {
     const url = typeof input === 'string' ? input
@@ -181,8 +219,13 @@
     if (url && !NOISE.test(url)) {
       p.then((res: Response) => {
         if (!res.ok) return;
-        if (!interesting(url, res.headers.get('content-type'))) return;
-        res.clone().text().then(t => emitSubFile(url, t)).catch(() => {});
+        if (interesting(url, res.headers.get('content-type'))) {
+          res.clone().text().then(t => emitSubFile(url, t)).catch(() => {});
+        } else if (worthSniffing(res)) {
+          res.clone().text()
+            .then(t => { if (looksLikeSubtitles(t)) emitSubFile(url, t); })
+            .catch(() => {});
+        }
       }).catch(() => {});
     }
     return p;
@@ -199,10 +242,15 @@
     };
     xhr.addEventListener('load', () => {
       try {
-        if (!interesting(url, xhr.getResponseHeader('content-type'))) return;
         // responseText throws for non-text responseTypes — check before reading.
         if (xhr.responseType && xhr.responseType !== 'text') return;
-        emitSubFile(url, xhr.responseText || '');
+        const ct = xhr.getResponseHeader('content-type');
+        if (interesting(url, ct)) {
+          emitSubFile(url, xhr.responseText || '');
+        } else if (hungry && ct && /text|json|xml/i.test(ct)) {
+          const body = xhr.responseText || '';
+          if (body.length <= 4 * 1024 * 1024 && looksLikeSubtitles(body)) emitSubFile(url, body);
+        }
       } catch { /* ignore */ }
     });
     return xhr;

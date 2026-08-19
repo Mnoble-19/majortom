@@ -48,6 +48,10 @@ const STYLE = `
   line-height: 1.34; text-wrap: balance;
 }
 .line:empty { display: none; }
+/* Re-triggered on every cue change so lines arrive rather than snap. */
+.line.swap { animation: mt-in .15s ease-out; }
+@keyframes mt-in { from { opacity: .2; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .line.swap { animation: none; } }
 
 .primary { font-size: var(--mt-size); font-weight: 550; color: #fff; letter-spacing: .002em; }
 .secondary {
@@ -109,7 +113,12 @@ export class Overlay {
   private cardTr!: HTMLElement;
   private cardSave!: HTMLButtonElement;
   private bar: HTMLElement;
-  private barToggles!: { blur: HTMLButtonElement; pause: HTMLButtonElement };
+  private barToggles!: {
+    blur: HTMLButtonElement;
+    pause: HTMLButtonElement;
+    loop: HTMLButtonElement;
+  };
+  private statusTimer = 0;
 
   private lastPrimary = '';
   private lastSecondary = '';
@@ -227,15 +236,22 @@ export class Overlay {
       this.lastPrimary = primary;
       this.closeCard();
       this.renderWords(primary);
+      if (primary) replay(this.primaryEl);
     }
     if (secondary !== this.lastSecondary) {
       this.lastSecondary = secondary;
       this.secondaryEl.textContent = secondary;
+      if (secondary) replay(this.secondaryEl);
     }
   }
 
-  setStatus(text: string): void {
+  /** `autoHideMs` clears the message again, for one-off notices. */
+  setStatus(text: string, autoHideMs = 0): void {
     this.statusEl.textContent = text;
+    clearTimeout(this.statusTimer);
+    if (text && autoHideMs > 0) {
+      this.statusTimer = self.setTimeout(() => { this.statusEl.textContent = ''; }, autoHideMs);
+    }
   }
 
   /** Build the primary line as clickable word spans, without any innerHTML. */
@@ -354,12 +370,14 @@ export class Overlay {
       const v = !this.settings.blurSecondary;
       this.hooks.patchSettings({ blurSecondary: v });
     });
-    const pause = mk('⏸', 'Auto-pause at the end of each subtitle', () => {
-      const v = !this.settings.autoPause;
-      this.hooks.patchSettings({ autoPause: v });
+    const pause = mk('⏸', 'Auto-pause at the end of each subtitle  P', () => {
+      this.hooks.patchSettings({ autoPause: !this.settings.autoPause });
+    });
+    const loop = mk('↻', 'Loop this subtitle  L', () => {
+      this.hooks.patchSettings({ loopCue: !this.settings.loopCue });
     });
 
-    this.barToggles = { blur, pause };
+    this.barToggles = { blur, pause, loop };
     return bar;
   }
 
@@ -371,8 +389,16 @@ export class Overlay {
     this.secondaryEl.style.display = s.showSecondary ? '' : 'none';
     this.barToggles?.blur.setAttribute('aria-pressed', String(s.blurSecondary));
     this.barToggles?.pause.setAttribute('aria-pressed', String(s.autoPause));
+    this.barToggles?.loop.setAttribute('aria-pressed', String(s.loopCue));
     this.scale();
   }
+}
+
+/** Restart the entry animation on an element whose content just changed. */
+function replay(node: HTMLElement): void {
+  node.classList.remove('swap');
+  void node.offsetWidth; // force reflow so the animation re-runs
+  node.classList.add('swap');
 }
 
 function el(tag: string, cls = ''): HTMLElement {
