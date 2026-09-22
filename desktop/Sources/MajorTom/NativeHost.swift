@@ -51,8 +51,12 @@ enum NativeHost {
         return (try? JSONEncoder().encode(response)) ?? Data("{\"ok\":false}".utf8)
     }
 
-    /// Upserts, so the extension can safely resend its whole vocabulary: edits
-    /// and stars propagate, and a first sync doubles as the initial import.
+    /// Upserts, so the extension can safely resend its whole vocabulary and a
+    /// first sync doubles as the initial import.
+    ///
+    /// Deliberately does not update `starred` on conflict. The browser only
+    /// ever reports what it knows, so resending would wipe anything starred in
+    /// the app; the browser seeds the flag, the app owns it from then on.
     private static func write(_ entries: [IncomingEntry]) throws -> Int {
         guard !entries.isEmpty else { return 0 }
         let db = try Database()
@@ -94,8 +98,7 @@ enum NativeHost {
                     translation = excluded.translation,
                     context = excluded.context,
                     context_translation = excluded.context_translation,
-                    position = excluded.position,
-                    starred = excluded.starred
+                    position = excluded.position
                 """, [
                     sourceID, entry.word, entry.translation ?? "", entry.context ?? "",
                     entry.contextTranslation ?? "", entry.time ?? 0,
