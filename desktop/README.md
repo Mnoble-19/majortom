@@ -77,6 +77,7 @@ CREATE TABLE item (
     context_translation TEXT NOT NULL DEFAULT '',
     position            REAL NOT NULL DEFAULT 0, -- see below
     starred             INTEGER NOT NULL DEFAULT 0,
+    status              TEXT NOT NULL DEFAULT 'learning', -- 'learning' | 'learned'
     created_at          TEXT NOT NULL,
     UNIQUE(source_id, kind, text)
 );
@@ -88,9 +89,18 @@ CREATE INDEX item_source ON item(source_id, kind);
 seconds into the recording for a call, a page or locator for a book. `0` means
 unknown and renders as `—`.
 
+`status` is learning progress. Marking something `learned` never removes it —
+it stays in the library, dimmed and struck through, and filterable.
+
 Both UNIQUE constraints are the dedup keys — use `ON CONFLICT ... DO UPDATE` to
 make writes idempotent, which is how the extension can safely resend its whole
 vocabulary on every save.
+
+**`starred` and `status` belong to the app.** Seed them on insert if you like,
+but never include them in a `DO UPDATE` clause. An importer only reports what it
+knows, so updating them on conflict silently wipes whatever the user set in the
+app the next time the importer runs — this was a real bug in the extension path
+before it was fixed.
 
 ## Adding a new source kind (read this first, calls project)
 
@@ -114,6 +124,7 @@ ON CONFLICT(source_id, kind, text) DO UPDATE SET
     translation = excluded.translation,
     context = excluded.context,
     context_translation = excluded.context_translation;
+    -- note: no starred, no status. Those are the app's.
 ```
 
 Open the DB with `PRAGMA journal_mode=WAL` and a busy timeout, and keep writes
