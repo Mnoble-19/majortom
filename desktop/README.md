@@ -146,10 +146,25 @@ a 4-byte native-endian length, then that many bytes of UTF-8 JSON.
 
 ```jsonc
 // →  request
-{ "type": "sync", "entries": [ /* VocabEntry from extension/src/shared/types.ts */ ] }
+{
+  "type": "sync",
+  "entries":  [ /* VocabEntry from extension/src/shared/types.ts */ ],
+  "mutations": [ { "kind": "delete", "word": "Kaution", "url": "https://…" },
+                 { "kind": "star",   "word": "Makler",  "url": "https://…",
+                   "starred": true } ]
+}
 // ←  response
 { "ok": true, "written": 4 }
 ```
+
+`entries` is the sender's whole vocabulary, upserted. `mutations` are changes
+that browser made itself — removals and stars — which cannot be inferred from
+`entries`, because the sender's list is not the whole library when several
+browsers feed it. Inferring deletions from "missing from entries" would make two
+browsers delete each other's words.
+
+Mutations are applied **before** entries, so current state wins over a stale
+queued change. Afterwards, `show` sources left with no items are deleted.
 
 `{"type":"ping"}` is a liveness check. Because the browser spawns the host on
 demand, the app does not need to be running to receive saves.
