@@ -6,21 +6,34 @@ from the browser extension today, call keywords and book vocabulary later.
 The browser extension keeps working without this app. The app is a library on
 top of it, not a dependency.
 
-## Build and install
+## Install
 
 ```bash
-./build.sh                          # assembles build/MajorTom.app
-./install-host.sh <extension-id>    # registers the native messaging host
+./install.sh
 ```
 
-The extension ID is on its card at `chrome://extensions`. An unpacked
-extension's ID is a hash of its folder, so the same folder loaded in several
-browsers gives the same ID and one argument covers them all; pass several IDs
-if you loaded it from different folders.
+Builds the extension and the app, puts `MajorTom.app` in `/Applications` and
+opens it. After that it is a normal Dock app — no terminal.
 
-`install-host.sh` writes a pointer file into every Chromium browser it finds
-(Chrome, Brave, Chromium, Edge, Vivaldi, Arc, plus beta channels). They all
-spawn the same binary, so every browser writes to one database.
+The only remaining step is per browser: `chrome://extensions` → Developer mode
+→ **Load unpacked** → this repo's `dist/extension` folder.
+
+You never pass an extension ID. Chromium derives an unpacked extension's ID by
+hashing the absolute path of its folder, so the app computes the same ID from
+`<repo>/dist/extension` and registers itself as that extension's native
+messaging host on every launch — into Chrome, Brave, Chromium, Edge, Vivaldi
+and Arc, all pointing at the one binary and therefore the one database.
+
+Because the ID is path-derived, loading the extension from anywhere other than
+`<repo>/dist/extension` will not match. `install-host.sh <id>...` is the manual
+escape hatch for that case.
+
+`./build.sh` alone rebuilds into `build/` without touching `/Applications`.
+
+The app's own location does not matter, but the repo's does: `build.sh` bakes
+the repo path into `Info.plist` as `MTRepoRoot`, which is how the app in
+`/Applications` still finds `data/` and `dist/extension`. Move the repo and you
+must re-run `install.sh`.
 
 ## Where the data lives
 
@@ -28,10 +41,10 @@ spawn the same binary, so every browser writes to one database.
 <repo>/data/majortom.sqlite
 ```
 
-Resolved at runtime by walking up from the binary to the folder containing
-`package.json`. If the `.app` is moved out of the tree it falls back to
-`~/Library/Application Support/MajorTom/`. Set `MAJORTOM_DB=/path/to.sqlite`
-to override — useful for tests, and it applies to both the app and the host.
+Resolved from `MTRepoRoot` in the bundle's `Info.plist`, falling back to walking
+up from the binary to the folder containing `package.json`, and finally to
+`~/Library/Application Support/MajorTom/`. Set `MAJORTOM_DB=/path/to.sqlite` to
+override — useful for tests, and it applies to both the app and the host.
 
 SQLite needs no server. WAL mode plus a 5s busy timeout lets several browsers
 write while the app reads. The app re-reads on window focus and every 3s, so
