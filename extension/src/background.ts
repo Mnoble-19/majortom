@@ -1,6 +1,7 @@
 import {BgRequest, BgResponse} from './shared/types';
 import {DEFAULT_SETTINGS} from './shared/config';
 import {translate} from './translate/deepl';
+import {watchVocab} from './sync/desktop';
 
 /** Subtitle files are text; anything much bigger than this is not one. */
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -11,6 +12,8 @@ chrome.runtime.onInstalled.addListener(async () => {
         await chrome.storage.local.set({mt_settings: DEFAULT_SETTINGS});
     }
 });
+
+watchVocab();
 
 async function handle(msg: BgRequest): Promise<BgResponse> {
     switch (msg.type) {

@@ -4,7 +4,8 @@
   "version": "0.2.0",
   "description": "Dual subtitles and click-to-save vocabulary on any video site.",
   "permissions": [
-    "storage"
+    "storage",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "<all_urls>"
