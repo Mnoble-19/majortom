@@ -4,3 +4,10 @@ dist/
 .idea/
 majortom.log
 extension/icons/
+
+# The saved-vocabulary library, written by the browsers and read by the app.
+data/
+
+# SwiftPM intermediates and the assembled .app
+desktop/.build/
+desktop/build/
