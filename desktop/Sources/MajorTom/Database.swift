@@ -22,37 +22,8 @@ final class Database {
         if let override = ProcessInfo.processInfo.environment["MAJORTOM_DB"], !override.isEmpty {
             return URL(fileURLWithPath: override)
         }
-        return directory().appendingPathComponent("majortom.sqlite")
+        return AppPaths.dataDirectory.appendingPathComponent("majortom.sqlite")
     }()
-
-    /// While this is a personal project the library lives in the repo's own
-    /// `data/`, where it is easy to open with the `sqlite3` CLI. The browser
-    /// spawns this same binary as its native messaging host, so the app and
-    /// every browser resolve to one file. Outside the tree — if the .app is
-    /// moved to /Applications — it reverts to the standard macOS location.
-    private static func directory() -> URL {
-        let fm = FileManager.default
-        var dir = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0]))
-            .resolvingSymlinksInPath()
-            .deletingLastPathComponent()
-
-        while dir.path != "/" {
-            if fm.fileExists(atPath: dir.appendingPathComponent("package.json").path) {
-                return make(dir.appendingPathComponent("data", isDirectory: true))
-            }
-            dir = dir.deletingLastPathComponent()
-        }
-
-        return make(
-            fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("MajorTom", isDirectory: true)
-        )
-    }
-
-    private static func make(_ url: URL) -> URL {
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }
 
     private var db: OpaquePointer?
 

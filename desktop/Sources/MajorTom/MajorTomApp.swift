@@ -3,6 +3,11 @@ import SwiftUI
 struct MajorTomApp: App {
     @StateObject private var store = Store()
 
+    init() {
+        // Cheap, idempotent, and self-healing if the app is moved.
+        HostInstaller.register()
+    }
+
     var body: some Scene {
         Window("MajorTom", id: "main") {
             RootView()
