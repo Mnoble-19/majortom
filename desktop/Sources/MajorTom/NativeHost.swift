@@ -38,7 +38,10 @@ enum NativeHost {
             let request = try JSONDecoder().decode(SyncRequest.self, from: body)
             switch request.type {
             case "sync":
-                let written = try write(request.entries ?? [])
+                let written = try apply(
+                    entries: request.entries ?? [],
+                    mutations: request.mutations ?? []
+                )
                 response = SyncResponse(ok: true, written: written, error: nil)
             case "ping":
                 response = SyncResponse(ok: true, written: 0, error: nil)
@@ -57,10 +60,29 @@ enum NativeHost {
     /// Deliberately does not update `starred` on conflict. The browser only
     /// ever reports what it knows, so resending would wipe anything starred in
     /// the app; the browser seeds the flag, the app owns it from then on.
-    private static func write(_ entries: [IncomingEntry]) throws -> Int {
-        guard !entries.isEmpty else { return 0 }
+    private static func apply(entries: [IncomingEntry], mutations: [Mutation]) throws -> Int {
+        guard !entries.isEmpty || !mutations.isEmpty else { return 0 }
         let db = try Database()
         try db.exec("BEGIN IMMEDIATE;")
+
+        // Mutations run first so that the entries — which are the browser's
+        // current state — win over any stale queued change.
+        for mutation in mutations {
+            switch mutation.kind {
+            case "delete":
+                try db.run("""
+                    DELETE FROM item WHERE kind = 'word' AND text = ? AND source_id IN
+                        (SELECT id FROM source WHERE kind = 'show' AND url = ?)
+                    """, [mutation.word, mutation.url])
+            case "star":
+                try db.run("""
+                    UPDATE item SET starred = ? WHERE kind = 'word' AND text = ? AND source_id IN
+                        (SELECT id FROM source WHERE kind = 'show' AND url = ?)
+                    """, [mutation.starred ?? false, mutation.word, mutation.url])
+            default:
+                break
+            }
+        }
 
         var sourceIDs: [String: Int64] = [:]
         var written = 0
@@ -106,6 +128,12 @@ enum NativeHost {
                 ])
             written += 1
         }
+
+        // A show you have unsaved every word from should not keep a card.
+        try db.exec("""
+            DELETE FROM source WHERE kind = 'show'
+              AND id NOT IN (SELECT source_id FROM item);
+            """)
 
         try db.exec("COMMIT;")
         return written

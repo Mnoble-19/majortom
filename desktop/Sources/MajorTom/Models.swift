@@ -103,9 +103,20 @@ struct IncomingEntry: Codable {
     var starred: Bool?
 }
 
+/// A change the browser made itself. Reported explicitly because the sending
+/// browser's vocabulary is not the whole library — several browsers feed it.
+struct Mutation: Codable {
+    /// "delete" or "star".
+    var kind: String
+    var word: String
+    var url: String
+    var starred: Bool?
+}
+
 struct SyncRequest: Codable {
     var type: String
     var entries: [IncomingEntry]?
+    var mutations: [Mutation]?
 }
 
 struct SyncResponse: Codable {
