@@ -51,9 +51,11 @@ final class Store: ObservableObject {
 
     func reloadIfChanged() {
         guard let db else { return }
-        let next = (try? db.query(
-            "SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(SUM(starred), 0) FROM item"
-        ) { "\($0.int(0)):\($0.int(1)):\($0.int(2))" })?.first ?? ""
+        let next = (try? db.query("""
+            SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(SUM(starred), 0),
+                   COALESCE(SUM(status = 'learned'), 0)
+            FROM item
+            """) { "\($0.int(0)):\($0.int(1)):\($0.int(2)):\($0.int(3))" })?.first ?? ""
         guard next != fingerprint else { return }
         fingerprint = next
         reload()
@@ -66,7 +68,8 @@ final class Store: ObservableObject {
                 SELECT s.id, s.kind, s.title, s.site, s.url, s.created_at,
                        COALESCE(SUM(i.kind = 'word'), 0),
                        COALESCE(SUM(i.kind = 'phrase'), 0),
-                       COALESCE(MAX(i.created_at), s.created_at)
+                       COALESCE(MAX(i.created_at), s.created_at),
+                       COALESCE(SUM(i.status = 'learned'), 0)
                 FROM source s
                 LEFT JOIN item i ON i.source_id = s.id
                 GROUP BY s.id
@@ -81,7 +84,8 @@ final class Store: ObservableObject {
                     createdAt: r.date(5),
                     wordCount: Int(r.int(6)),
                     phraseCount: Int(r.int(7)),
-                    lastSavedAt: r.date(8)
+                    lastSavedAt: r.date(8),
+                    learnedCount: Int(r.int(9))
                 )
             }
             loadError = nil
@@ -94,7 +98,7 @@ final class Store: ObservableObject {
         guard let db else { return [] }
         return (try? db.query("""
             SELECT id, source_id, kind, text, translation, context,
-                   context_translation, position, starred, created_at
+                   context_translation, position, starred, status, created_at
             FROM item WHERE source_id = ? AND kind = ?
             ORDER BY position, id
             """, [source.id, kind.rawValue]) { r in
@@ -108,13 +112,21 @@ final class Store: ObservableObject {
                 contextTranslation: r.string(6),
                 position: r.double(7),
                 starred: r.bool(8),
-                createdAt: r.date(9)
+                status: ItemStatus(rawValue: r.string(9)) ?? .learning,
+                createdAt: r.date(10)
             )
         }) ?? []
     }
 
     func toggleStar(_ item: Item) {
         _ = try? db?.run("UPDATE item SET starred = NOT starred WHERE id = ?", [item.id])
+        reload()
+        objectWillChange.send()
+    }
+
+    func toggleLearned(_ item: Item) {
+        let next: ItemStatus = item.status == .learned ? .learning : .learned
+        _ = try? db?.run("UPDATE item SET status = ? WHERE id = ?", [next.rawValue, item.id])
         reload()
         objectWillChange.send()
     }

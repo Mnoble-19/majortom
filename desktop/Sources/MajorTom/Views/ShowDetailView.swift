@@ -6,16 +6,21 @@ struct ShowDetailView: View {
 
     @State private var kind: ItemKind = .word
     @State private var search = ""
+    @State private var filter: ItemStatus?
     @State private var sortOrder = [KeyPathComparator(\Item.position)]
 
+    private var all: [Item] { store.items(for: source, kind: kind) }
+
     private var rows: [Item] {
-        let all = store.items(for: source, kind: kind)
         let needle = search.trimmingCharacters(in: .whitespaces).lowercased()
-        let filtered = needle.isEmpty ? all : all.filter {
-            $0.text.lowercased().contains(needle)
-                || $0.translation.lowercased().contains(needle)
-        }
-        return filtered.sorted(using: sortOrder)
+        return all
+            .filter { filter == nil || $0.status == filter }
+            .filter {
+                needle.isEmpty
+                    || $0.text.lowercased().contains(needle)
+                    || $0.translation.lowercased().contains(needle)
+            }
+            .sorted(using: sortOrder)
     }
 
     var body: some View {
@@ -50,14 +55,34 @@ struct ShowDetailView: View {
                 Text(Platform.displayName(for: source.site)).pill(Theme.secondary)
             }
 
-            Picker("", selection: $kind) {
-                Text("Words (\(source.wordCount))").tag(ItemKind.word)
-                Text("Phrases (\(source.phraseCount))").tag(ItemKind.phrase)
+            HStack(spacing: 16) {
+                Picker("", selection: $kind) {
+                    Text("Words (\(source.wordCount))").tag(ItemKind.word)
+                    Text("Phrases (\(source.phraseCount))").tag(ItemKind.phrase)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .font(Theme.ui(15))
+                .frame(width: 330)
+
+                Picker("", selection: $filter) {
+                    Text("All").tag(ItemStatus?.none)
+                    Text(ItemStatus.learning.label).tag(ItemStatus?.some(.learning))
+                    Text(ItemStatus.learned.label).tag(ItemStatus?.some(.learned))
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .font(Theme.ui(14))
+                .frame(width: 130)
+
+                Spacer()
+
+                if learned > 0 {
+                    Text("\(learned) of \(all.count) learned")
+                        .font(Theme.ui(13))
+                        .foregroundStyle(Theme.success)
+                }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .font(Theme.ui(15))
-            .frame(width: 330)
         }
         .padding(.horizontal, 30)
         .padding(.top, 24)
@@ -70,13 +95,21 @@ struct ShowDetailView: View {
         if items.isEmpty {
             EmptyState(
                 icon: kind == .word ? "character.book.closed" : "text.quote",
-                title: search.isEmpty ? "No \(kind == .word ? "words" : "phrases") saved" : "No matches",
-                message: search.isEmpty && kind == .phrase
+                title: search.isEmpty && filter == nil
+                    ? "No \(kind == .word ? "words" : "phrases") saved"
+                    : "No matches",
+                message: search.isEmpty && filter == nil && kind == .phrase
                     ? "Phrase capture is not wired up in the extension yet."
                     : ""
             )
         } else {
             Table(items, sortOrder: $sortOrder) {
+                TableColumn("") { item in
+                    LearnedButton(status: item.status) { store.toggleLearned(item) }
+                        .padding(.vertical, 9)
+                }
+                .width(30)
+
                 TableColumn("") { item in
                     StarButton(starred: item.starred) { store.toggleStar(item) }
                         .padding(.vertical, 9)
@@ -87,6 +120,8 @@ struct ShowDetailView: View {
                     Text(item.text)
                         .font(Theme.serif(17, .medium))
                         .foregroundStyle(Theme.accent)
+                        .strikethrough(item.status == .learned, color: Theme.faint)
+                        .opacity(dim(item))
                         .padding(.vertical, 9)
                 }
                 .width(min: 150, ideal: 220)
@@ -95,6 +130,7 @@ struct ShowDetailView: View {
                     Text(item.translation)
                         .font(Theme.ui(16))
                         .foregroundStyle(Theme.secondary)
+                        .opacity(dim(item))
                         .padding(.vertical, 9)
                 }
                 .width(min: 150, ideal: 240)
@@ -103,6 +139,7 @@ struct ShowDetailView: View {
                     Text(item.context)
                         .font(Theme.ui(15))
                         .foregroundStyle(Theme.muted)
+                        .opacity(dim(item))
                         .help(item.contextTranslation)
                         .padding(.vertical, 9)
                 }
@@ -111,6 +148,7 @@ struct ShowDetailView: View {
                     Text(timecode(item.position))
                         .font(Theme.mono(14))
                         .foregroundStyle(Theme.faint)
+                        .opacity(dim(item))
                         .padding(.vertical, 9)
                 }
                 .width(70)
@@ -118,6 +156,13 @@ struct ShowDetailView: View {
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
         }
+    }
+
+    private var learned: Int { all.filter { $0.status == .learned }.count }
+
+    /// Learned rows stay in the list but recede.
+    private func dim(_ item: Item) -> Double {
+        item.status == .learned ? 0.4 : 1
     }
 
     private func timecode(_ seconds: Double) -> String {

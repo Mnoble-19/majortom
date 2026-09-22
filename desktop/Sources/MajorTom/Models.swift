@@ -10,6 +10,19 @@ enum ItemKind: String, Codable, CaseIterable {
     case word, phrase
 }
 
+/// Nothing is ever deleted by learning it — `learned` items stay in the
+/// library, just out of the way.
+enum ItemStatus: String, Codable, CaseIterable {
+    case learning, learned
+
+    var label: String {
+        switch self {
+        case .learning: return "To learn"
+        case .learned: return "Learned"
+        }
+    }
+}
+
 struct Source: Identifiable, Hashable {
     var id: Int64
     var kind: SourceKind
@@ -20,6 +33,7 @@ struct Source: Identifiable, Hashable {
     var wordCount: Int
     var phraseCount: Int
     var lastSavedAt: Date
+    var learnedCount: Int
 }
 
 /// Sources grouped by the site they came from. Derived, never stored: the
@@ -71,6 +85,7 @@ struct Item: Identifiable, Hashable {
     /// Playback seconds for video, offset for calls, locator for books.
     var position: Double
     var starred: Bool
+    var status: ItemStatus
     var createdAt: Date
 }
 

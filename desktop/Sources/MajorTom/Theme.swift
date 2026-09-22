@@ -20,6 +20,8 @@ enum Theme {
     static let accent = Color(hex: 0xFFD479)
     /// What it means.
     static let secondary = Color(hex: 0x7EC8E3)
+    /// Learned — also from the extension palette.
+    static let success = Color(hex: 0x7FD6A0)
 
     static let radius: CGFloat = 14
 

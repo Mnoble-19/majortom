@@ -74,12 +74,23 @@ final class Database {
                 context_translation TEXT NOT NULL DEFAULT '',
                 position            REAL NOT NULL DEFAULT 0,
                 starred             INTEGER NOT NULL DEFAULT 0,
+                status              TEXT NOT NULL DEFAULT 'learning',
                 created_at          TEXT NOT NULL,
                 UNIQUE(source_id, kind, text)
             );
 
             CREATE INDEX IF NOT EXISTS item_source ON item(source_id, kind);
             """)
+
+        // Additive migrations for databases created before a column existed.
+        if !columnExists("item", "status") {
+            try exec("ALTER TABLE item ADD COLUMN status TEXT NOT NULL DEFAULT 'learning';")
+        }
+    }
+
+    private func columnExists(_ table: String, _ column: String) -> Bool {
+        let names = (try? query("PRAGMA table_info(\(table));") { $0.string(1) }) ?? []
+        return names.contains(column)
     }
 
     // MARK: - Statement helpers

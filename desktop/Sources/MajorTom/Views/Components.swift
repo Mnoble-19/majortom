@@ -122,12 +122,21 @@ struct ShowCard: View {
                         Text(Platform.displayName(for: source.site)).pill(Theme.secondary)
                     }
                     Spacer()
-                    Text("\(source.wordCount)")
-                        .font(Theme.ui(14, .semibold))
-                        .foregroundStyle(Theme.muted)
-                    Text(source.wordCount == 1 ? "word" : "words")
-                        .font(Theme.ui(12))
-                        .foregroundStyle(Theme.faint)
+                    if source.learnedCount > 0 {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.success)
+                        Text("\(source.learnedCount)/\(source.wordCount)")
+                            .font(Theme.ui(13, .semibold))
+                            .foregroundStyle(Theme.muted)
+                    } else {
+                        Text("\(source.wordCount)")
+                            .font(Theme.ui(14, .semibold))
+                            .foregroundStyle(Theme.muted)
+                        Text(source.wordCount == 1 ? "word" : "words")
+                            .font(Theme.ui(12))
+                            .foregroundStyle(Theme.faint)
+                    }
                 }
             }
             .padding(16)
@@ -180,6 +189,22 @@ struct RecentShowRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+}
+
+struct LearnedButton: View {
+    let status: ItemStatus
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: status == .learned ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 15))
+                .foregroundStyle(status == .learned ? Theme.success : Theme.faint.opacity(0.45))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(status == .learned ? "Move back to still learning" : "Mark as learned")
     }
 }
 
