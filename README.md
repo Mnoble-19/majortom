@@ -34,13 +34,13 @@ Translations are cached per video, so rewatching costs nothing.
 
 ## Keys
 
-| Key | Action |
-| --- | --- |
-| `[` | Previous subtitle |
-| `]` | Next subtitle |
-| `\` | Replay the current subtitle |
-| `P` | Toggle auto-pause at the end of each line |
-| `L` | Loop the current line (shadowing practice) |
+| Key | Action                                         |
+|-----|------------------------------------------------|
+| `[` | Previous subtitle                              |
+| `]` | Next subtitle                                  |
+| `\` | Replay the current subtitle                    |
+| `P` | Toggle auto-pause at the end of each line      |
+| `L` | Loop the current line (shadowing practice)     |
 | `H` | Toggle the blurred translation ("guess first") |
 
 Bracket keys are used deliberately: every video site already claims the letters
@@ -53,12 +53,12 @@ Sites differ wildly in how they deliver captions, so capture is layered. The
 first layer that produces cues wins, and a better source replaces a worse one if
 it turns up later.
 
-| Layer | How it works | Covers |
-| --- | --- | --- |
-| **Adapter** | Reads the site's own metadata API for a subtitle file URL | ARD, ZDF, YouTube |
+| Layer           | How it works                                                                                        | Covers                                                      |
+|-----------------|-----------------------------------------------------------------------------------------------------|-------------------------------------------------------------|
+| **Adapter**     | Reads the site's own metadata API for a subtitle file URL                                           | ARD, ZDF, YouTube                                           |
 | **Text tracks** | Hooks `video.textTracks`, forcing tracks to `hidden` so cues populate without the site drawing them | hls.js, dash.js, Shaka, video.js, JW, Plyr, plain `<track>` |
-| **Network** | Sniffs fetch/XHR responses and content-sniffs the body for VTT/TTML/SRT/json3 | sites that fetch a whole subtitle file |
-| **DOM** | — | *not implemented; see below* |
+| **Network**     | Sniffs fetch/XHR responses and content-sniffs the body for VTT/TTML/SRT/json3                       | sites that fetch a whole subtitle file                      |
+| **DOM**         | —                                                                                                   | *not implemented; see below*                                |
 
 The adapter layer exists because interception alone is not enough. ARD is the
 clearest example: it renders captions with a custom DOM renderer over MSE, it

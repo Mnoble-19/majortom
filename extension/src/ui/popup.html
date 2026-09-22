@@ -1,227 +1,502 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<style>
-  :root {
-    --bg: #12131a; --bg2: #191b24; --line: #262936;
-    --fg: #e8eaf2; --dim: #8f96a8; --faint: #5c6376;
-    --accent: #7ec8e3; --gold: #ffd479;
-  }
-  * { box-sizing: border-box; }
-  body {
-    width: 360px; margin: 0; background: var(--bg); color: var(--fg);
-    font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  }
+    <meta charset="utf-8">
+    <style>
+        :root {
+            --bg: #12131a;
+            --bg2: #191b24;
+            --line: #262936;
+            --fg: #e8eaf2;
+            --dim: #8f96a8;
+            --faint: #5c6376;
+            --accent: #7ec8e3;
+            --gold: #ffd479;
+        }
 
-  header {
-    display: flex; align-items: center; gap: 9px;
-    padding: 12px 14px 10px; border-bottom: 1px solid var(--line);
-  }
-  .logo {
-    width: 22px; height: 22px; border-radius: 6px; flex: none;
-    background: linear-gradient(135deg, #7ec8e3, #4a7fa8);
-    display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #0d1017;
-  }
-  .brand { font-weight: 650; font-size: 14px; letter-spacing: .01em; }
-  .brand small { display: block; color: var(--faint); font-weight: 400; font-size: 10.5px; }
-  header .spacer { flex: 1; }
+        * {
+            box-sizing: border-box;
+        }
 
-  /* iOS-style switch, used for the master toggle and every boolean setting */
-  .sw { position: relative; width: 34px; height: 20px; flex: none; cursor: pointer; }
-  .sw input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
-  .sw span {
-    position: absolute; inset: 0; border-radius: 999px; background: #333849;
-    transition: background .15s; pointer-events: none;
-  }
-  .sw span::after {
-    content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
-    border-radius: 50%; background: #fff; transition: transform .15s;
-  }
-  .sw input:checked + span { background: var(--accent); }
-  .sw input:checked + span::after { transform: translateX(14px); }
+        body {
+            width: 360px;
+            margin: 0;
+            background: var(--bg);
+            color: var(--fg);
+            font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        }
 
-  nav { display: flex; border-bottom: 1px solid var(--line); }
-  nav button {
-    all: unset; flex: 1; text-align: center; padding: 9px 0; cursor: pointer;
-    font-size: 12.5px; color: var(--dim); border-bottom: 2px solid transparent;
-  }
-  nav button:hover { color: var(--fg); }
-  nav button.on { color: var(--fg); border-bottom-color: var(--accent); }
+        header {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 12px 14px 10px;
+            border-bottom: 1px solid var(--line);
+        }
 
-  .panel { display: none; padding: 12px 14px 14px; }
-  .panel.on { display: block; }
+        .logo {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            flex: none;
+            background: linear-gradient(135deg, #7ec8e3, #4a7fa8);
+            display: grid;
+            place-items: center;
+            font-size: 12px;
+            font-weight: 700;
+            color: #0d1017;
+        }
 
-  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; }
-  .row + .row { border-top: 1px solid #1d202b; }
-  .row label { color: var(--fg); }
-  .row .hint { display: block; color: var(--faint); font-size: 11px; margin-top: 1px; }
+        .brand {
+            font-weight: 650;
+            font-size: 14px;
+            letter-spacing: .01em;
+        }
 
-  select, input[type=text], input[type=password], input[type=search] {
-    background: var(--bg2); color: var(--fg); border: 1px solid var(--line);
-    border-radius: 7px; padding: 5px 8px; font: inherit; font-size: 12.5px; outline: none;
-  }
-  select:focus, input:focus { border-color: var(--accent); }
-  select { max-width: 168px; }
-  input[type=range] { width: 120px; accent-color: var(--accent); }
+        .brand small {
+            display: block;
+            color: var(--faint);
+            font-weight: 400;
+            font-size: 10.5px;
+        }
 
-  .group { margin-top: 14px; }
-  .group h2 {
-    font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
-    color: var(--faint); margin: 0 0 4px; font-weight: 600;
-  }
+        header .spacer {
+            flex: 1;
+        }
 
-  .keyfield { display: flex; gap: 6px; margin-top: 6px; }
-  .keyfield input { flex: 1; min-width: 0; }
-  button.act {
-    all: unset; cursor: pointer; padding: 5px 11px; border-radius: 7px;
-    background: #26506b; color: #dff2fb; font-size: 12px; font-weight: 550; text-align: center;
-  }
-  button.act:hover { background: #2f658a; }
-  button.act.ghost { background: transparent; border: 1px solid var(--line); color: var(--dim); }
-  button.act.ghost:hover { background: var(--bg2); color: var(--fg); }
-  .status { font-size: 11.5px; margin-top: 6px; min-height: 1.2em; }
-  .status.ok { color: #7fd6a0; }
-  .status.err { color: #ef8f8f; }
-  .status.busy { color: var(--dim); }
+        /* iOS-style switch, used for the master toggle and every boolean setting */
+        .sw {
+            position: relative;
+            width: 34px;
+            height: 20px;
+            flex: none;
+            cursor: pointer;
+        }
 
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
+        .sw input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            cursor: pointer;
+        }
 
-  /* Words */
-  .toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
-  .toolbar input { flex: 1; min-width: 0; }
-  .count { color: var(--faint); font-size: 11px; white-space: nowrap; }
-  .list { max-height: 330px; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
-  .grp { font-size: 10.5px; color: var(--faint); text-transform: uppercase;
-         letter-spacing: .06em; margin: 11px 0 3px; }
-  .item { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-top: 1px solid #1d202b; }
-  .item .main { flex: 1; min-width: 0; }
-  .w { color: var(--gold); font-weight: 640; font-size: 13.5px; }
-  .t { color: var(--fg); font-size: 12px; }
-  .c { color: var(--faint); font-size: 11px; margin-top: 2px;
-       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .icons { display: flex; gap: 2px; flex: none; }
-  .icons button {
-    all: unset; cursor: pointer; width: 22px; height: 22px; border-radius: 6px;
-    display: grid; place-items: center; color: #4d5364; font-size: 13px;
-  }
-  .icons button:hover { background: var(--bg2); color: var(--fg); }
-  .icons button.star.on { color: var(--gold); }
-  .empty { color: var(--faint); text-align: center; padding: 34px 10px; font-size: 12.5px; line-height: 1.6; }
+        .sw span {
+            position: absolute;
+            inset: 0;
+            border-radius: 999px;
+            background: #333849;
+            transition: background .15s;
+            pointer-events: none;
+        }
 
-  kbd {
-    background: var(--bg2); border: 1px solid var(--line); border-bottom-width: 2px;
-    border-radius: 4px; padding: 0 4px; font: 11px ui-monospace, monospace; color: var(--fg);
-  }
-  .keys { display: grid; grid-template-columns: auto 1fr; gap: 5px 9px; align-items: center;
-          color: var(--dim); font-size: 11.5px; }
-</style>
+        .sw span::after {
+            content: "";
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform .15s;
+        }
+
+        .sw input:checked + span {
+            background: var(--accent);
+        }
+
+        .sw input:checked + span::after {
+            transform: translateX(14px);
+        }
+
+        nav {
+            display: flex;
+            border-bottom: 1px solid var(--line);
+        }
+
+        nav button {
+            all: unset;
+            flex: 1;
+            text-align: center;
+            padding: 9px 0;
+            cursor: pointer;
+            font-size: 12.5px;
+            color: var(--dim);
+            border-bottom: 2px solid transparent;
+        }
+
+        nav button:hover {
+            color: var(--fg);
+        }
+
+        nav button.on {
+            color: var(--fg);
+            border-bottom-color: var(--accent);
+        }
+
+        .panel {
+            display: none;
+            padding: 12px 14px 14px;
+        }
+
+        .panel.on {
+            display: block;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 7px 0;
+        }
+
+        .row + .row {
+            border-top: 1px solid #1d202b;
+        }
+
+        .row label {
+            color: var(--fg);
+        }
+
+        .row .hint {
+            display: block;
+            color: var(--faint);
+            font-size: 11px;
+            margin-top: 1px;
+        }
+
+        select, input[type=text], input[type=password], input[type=search] {
+            background: var(--bg2);
+            color: var(--fg);
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            padding: 5px 8px;
+            font: inherit;
+            font-size: 12.5px;
+            outline: none;
+        }
+
+        select:focus, input:focus {
+            border-color: var(--accent);
+        }
+
+        select {
+            max-width: 168px;
+        }
+
+        input[type=range] {
+            width: 120px;
+            accent-color: var(--accent);
+        }
+
+        .group {
+            margin-top: 14px;
+        }
+
+        .group h2 {
+            font-size: 10.5px;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            color: var(--faint);
+            margin: 0 0 4px;
+            font-weight: 600;
+        }
+
+        .keyfield {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+        }
+
+        .keyfield input {
+            flex: 1;
+            min-width: 0;
+        }
+
+        button.act {
+            all: unset;
+            cursor: pointer;
+            padding: 5px 11px;
+            border-radius: 7px;
+            background: #26506b;
+            color: #dff2fb;
+            font-size: 12px;
+            font-weight: 550;
+            text-align: center;
+        }
+
+        button.act:hover {
+            background: #2f658a;
+        }
+
+        button.act.ghost {
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--dim);
+        }
+
+        button.act.ghost:hover {
+            background: var(--bg2);
+            color: var(--fg);
+        }
+
+        .status {
+            font-size: 11.5px;
+            margin-top: 6px;
+            min-height: 1.2em;
+        }
+
+        .status.ok {
+            color: #7fd6a0;
+        }
+
+        .status.err {
+            color: #ef8f8f;
+        }
+
+        .status.busy {
+            color: var(--dim);
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* Words */
+        .toolbar {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .toolbar input {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .count {
+            color: var(--faint);
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .list {
+            max-height: 330px;
+            overflow-y: auto;
+            margin: 0 -4px;
+            padding: 0 4px;
+        }
+
+        .grp {
+            font-size: 10.5px;
+            color: var(--faint);
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin: 11px 0 3px;
+        }
+
+        .item {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+            padding: 6px 0;
+            border-top: 1px solid #1d202b;
+        }
+
+        .item .main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .w {
+            color: var(--gold);
+            font-weight: 640;
+            font-size: 13.5px;
+        }
+
+        .t {
+            color: var(--fg);
+            font-size: 12px;
+        }
+
+        .c {
+            color: var(--faint);
+            font-size: 11px;
+            margin-top: 2px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .icons {
+            display: flex;
+            gap: 2px;
+            flex: none;
+        }
+
+        .icons button {
+            all: unset;
+            cursor: pointer;
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            display: grid;
+            place-items: center;
+            color: #4d5364;
+            font-size: 13px;
+        }
+
+        .icons button:hover {
+            background: var(--bg2);
+            color: var(--fg);
+        }
+
+        .icons button.star.on {
+            color: var(--gold);
+        }
+
+        .empty {
+            color: var(--faint);
+            text-align: center;
+            padding: 34px 10px;
+            font-size: 12.5px;
+            line-height: 1.6;
+        }
+
+        kbd {
+            background: var(--bg2);
+            border: 1px solid var(--line);
+            border-bottom-width: 2px;
+            border-radius: 4px;
+            padding: 0 4px;
+            font: 11px ui-monospace, monospace;
+            color: var(--fg);
+        }
+
+        .keys {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 5px 9px;
+            align-items: center;
+            color: var(--dim);
+            font-size: 11.5px;
+        }
+    </style>
 </head>
 <body>
-  <header>
+<header>
     <div class="logo">M</div>
     <div class="brand">MajorTom<small id="siteLabel">—</small></div>
     <div class="spacer"></div>
     <label class="sw" title="Enable on this site">
-      <input type="checkbox" id="siteToggle"><span></span>
+        <input id="siteToggle" type="checkbox"><span></span>
     </label>
-  </header>
+</header>
 
-  <nav>
+<nav>
     <button class="on" data-tab="subs">Subtitles</button>
     <button data-tab="words">Words</button>
     <button data-tab="help">Keys</button>
-  </nav>
+</nav>
 
-  <section class="panel on" id="tab-subs">
+<section class="panel on" id="tab-subs">
     <div class="row">
-      <label>Video language<span class="hint">Language being learned</span></label>
-      <select id="sourceLang"></select>
+        <label>Video language<span class="hint">Language being learned</span></label>
+        <select id="sourceLang"></select>
     </div>
     <div class="row">
-      <label>Translate into<span class="hint">Your second line</span></label>
-      <select id="targetLang"></select>
+        <label>Translate into<span class="hint">Your second line</span></label>
+        <select id="targetLang"></select>
     </div>
 
     <div class="group">
-      <h2>Display</h2>
-      <div class="row">
-        <label>Show translation line</label>
-        <label class="sw"><input type="checkbox" id="showSecondary"><span></span></label>
-      </div>
-      <div class="row">
-        <label>Blur until hovered<span class="hint">Guess first, then check</span></label>
-        <label class="sw"><input type="checkbox" id="blurSecondary"><span></span></label>
-      </div>
-      <div class="row">
-        <label>Auto-pause each line</label>
-        <label class="sw"><input type="checkbox" id="autoPause"><span></span></label>
-      </div>
-      <div class="row">
-        <label>Loop each line<span class="hint">Repeats until you skip on</span></label>
-        <label class="sw"><input type="checkbox" id="loopCue"><span></span></label>
-      </div>
-      <div class="row">
-        <label>Hide the site's own captions</label>
-        <label class="sw"><input type="checkbox" id="hideNativeCaptions"><span></span></label>
-      </div>
-      <div class="row">
-        <label>Text size</label>
-        <input type="range" id="fontScale" min="0.7" max="1.8" step="0.05">
-      </div>
-      <div class="row">
-        <label>Height above bottom<span class="hint">Raise it clear of the player controls</span></label>
-        <input type="range" id="offsetPct" min="2" max="45" step="1">
-      </div>
+        <h2>Display</h2>
+        <div class="row">
+            <label>Show translation line</label>
+            <label class="sw"><input id="showSecondary" type="checkbox"><span></span></label>
+        </div>
+        <div class="row">
+            <label>Blur until hovered<span class="hint">Guess first, then check</span></label>
+            <label class="sw"><input id="blurSecondary" type="checkbox"><span></span></label>
+        </div>
+        <div class="row">
+            <label>Auto-pause each line</label>
+            <label class="sw"><input id="autoPause" type="checkbox"><span></span></label>
+        </div>
+        <div class="row">
+            <label>Loop each line<span class="hint">Repeats until you skip on</span></label>
+            <label class="sw"><input id="loopCue" type="checkbox"><span></span></label>
+        </div>
+        <div class="row">
+            <label>Hide the site's own captions</label>
+            <label class="sw"><input id="hideNativeCaptions" type="checkbox"><span></span></label>
+        </div>
+        <div class="row">
+            <label>Text size</label>
+            <input id="fontScale" max="1.8" min="0.7" step="0.05" type="range">
+        </div>
+        <div class="row">
+            <label>Height above bottom<span class="hint">Raise it clear of the player controls</span></label>
+            <input id="offsetPct" max="45" min="2" step="1" type="range">
+        </div>
     </div>
 
     <div class="group">
-      <h2>DeepL</h2>
-      <div style="color:var(--faint);font-size:11.5px">
-        Needed everywhere except YouTube, which translates its own subtitles for free.
-        <a href="https://www.deepl.com/pro-api" target="_blank" rel="noopener">Get a free key</a> —
-        500k characters/month.
-      </div>
-      <div class="keyfield">
-        <input type="password" id="deeplKey" placeholder="DeepL API key" autocomplete="off" spellcheck="false">
-        <button class="act" id="testKey">Test</button>
-      </div>
-      <div class="status" id="keyStatus"></div>
-      <div class="keyfield">
-        <button class="act ghost" id="clearCache">Clear translation cache</button>
-      </div>
+        <h2>DeepL</h2>
+        <div style="color:var(--faint);font-size:11.5px">
+            Needed everywhere except YouTube, which translates its own subtitles for free.
+            <a href="https://www.deepl.com/pro-api" rel="noopener" target="_blank">Get a free key</a> —
+            500k characters/month.
+        </div>
+        <div class="keyfield">
+            <input autocomplete="off" id="deeplKey" placeholder="DeepL API key" spellcheck="false" type="password">
+            <button class="act" id="testKey">Test</button>
+        </div>
+        <div class="status" id="keyStatus"></div>
+        <div class="keyfield">
+            <button class="act ghost" id="clearCache">Clear translation cache</button>
+        </div>
     </div>
-  </section>
+</section>
 
-  <section class="panel" id="tab-words">
+<section class="panel" id="tab-words">
     <div class="toolbar">
-      <input type="search" id="search" placeholder="Search words…">
-      <span class="count" id="count"></span>
-      <button class="act ghost" id="export" title="Download as TSV for Anki">Export</button>
+        <input id="search" placeholder="Search words…" type="search">
+        <span class="count" id="count"></span>
+        <button class="act ghost" id="export" title="Download as TSV for Anki">Export</button>
     </div>
     <div class="list" id="list"></div>
-  </section>
+</section>
 
-  <section class="panel" id="tab-help">
+<section class="panel" id="tab-help">
     <div class="keys">
-      <kbd>[</kbd><span>Previous subtitle</span>
-      <kbd>]</kbd><span>Next subtitle</span>
-      <kbd>\</kbd><span>Replay current subtitle</span>
-      <kbd>P</kbd><span>Toggle auto-pause</span>
-      <kbd>L</kbd><span>Loop the current subtitle</span>
-      <kbd>H</kbd><span>Toggle blurred translation</span>
+        <kbd>[</kbd><span>Previous subtitle</span>
+        <kbd>]</kbd><span>Next subtitle</span>
+        <kbd>\</kbd><span>Replay current subtitle</span>
+        <kbd>P</kbd><span>Toggle auto-pause</span>
+        <kbd>L</kbd><span>Loop the current subtitle</span>
+        <kbd>H</kbd><span>Toggle blurred translation</span>
     </div>
     <div class="group">
-      <h2>Tips</h2>
-      <div style="color:var(--dim);font-size:12px;line-height:1.65">
-        Click any word in the top line to look it up and save it.<br>
-        Hover the subtitles to reveal the toolbar.<br>
-        Keys are ignored while you're typing in a text box.
-      </div>
+        <h2>Tips</h2>
+        <div style="color:var(--dim);font-size:12px;line-height:1.65">
+            Click any word in the top line to look it up and save it.<br>
+            Hover the subtitles to reveal the toolbar.<br>
+            Keys are ignored while you're typing in a text box.
+        </div>
     </div>
-  </section>
+</section>
 
-  <script src="popup.js"></script>
+<script src="popup.js"></script>
 </body>
 </html>

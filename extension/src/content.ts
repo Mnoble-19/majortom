@@ -1,17 +1,22 @@
-import { CueTrack, MediaInfo, PageMessage, Settings, VocabEntry } from './shared/types';
-import { NATIVE_CAPTION_SELECTORS } from './shared/config';
-import { adapterFor, mediaInfo, Adapter } from './capture/adapters';
-import { parse, cueIndexAt } from './capture/parsers';
-import { Overlay } from './ui/overlay';
-import { SecondaryLines, translateCues, translateOne } from './translate';
+import {CueTrack, MediaInfo, PageMessage, Settings, VocabEntry} from './shared/types';
+import {NATIVE_CAPTION_SELECTORS} from './shared/config';
+import {Adapter, adapterFor, mediaInfo} from './capture/adapters';
+import {cueIndexAt, parse} from './capture/parsers';
+import {Overlay} from './ui/overlay';
+import {SecondaryLines, translateCues, translateOne} from './translate';
 import {
-  getSettings, onSettingsChanged, setSettings, isHostEnabled,
-  getVocab, addWord, removeWordEverywhere,
+  addWord,
+  getSettings,
+  getVocab,
+  isHostEnabled,
+  onSettingsChanged,
+  removeWordEverywhere,
+  setSettings,
 } from './shared/storage';
-import { log } from './shared/logger';
+import {log} from './shared/logger';
 
 /** How much a source is trusted; a higher-ranked track replaces a lower one. */
-const SOURCE_RANK = { adapter: 4, texttrack: 3, network: 2, dom: 1 } as const;
+const SOURCE_RANK = {adapter: 4, texttrack: 3, network: 2, dom: 1} as const;
 
 let settings: Settings;
 let adapter: Adapter | null = null;
@@ -40,89 +45,89 @@ let pageActivated = false;
 /* ── Boot ─────────────────────────────────────────────────────────────────── */
 
 async function boot() {
-  settings = await getSettings();
-  adapter = adapterFor();
+    settings = await getSettings();
+    adapter = adapterFor();
 
-  if (!isHostEnabled(settings)) {
-    log.info('disabled for', location.hostname);
-    configurePage(false);
-    return;
-  }
+    if (!isHostEnabled(settings)) {
+        log.info('disabled for', location.hostname);
+        configurePage(false);
+        return;
+    }
 
-  log.info(`init on ${location.hostname}${adapter ? ` (adapter: ${adapter.id})` : ' (generic capture)'}`);
-  listenToPage();
-  installKeyboard();
+    log.info(`init on ${location.hostname}${adapter ? ` (adapter: ${adapter.id})` : ' (generic capture)'}`);
+    listenToPage();
+    installKeyboard();
 
-  onSettingsChanged(next => {
-    const wasEnabled = isHostEnabled(settings);
-    settings = next;
-    overlay?.applySettings(next);
-    applyNativeCaptionCss();
-    if (wasEnabled !== isHostEnabled(next)) location.reload();
-  });
+    onSettingsChanged(next => {
+        const wasEnabled = isHostEnabled(settings);
+        settings = next;
+        overlay?.applySettings(next);
+        applyNativeCaptionCss();
+        if (wasEnabled !== isHostEnabled(next)) location.reload();
+    });
 
-  // A single loop drives discovery: it notices new videos and SPA navigations
-  // without needing site-specific navigation events.
-  setInterval(tick, 700);
-  tick();
+    // A single loop drives discovery: it notices new videos and SPA navigations
+    // without needing site-specific navigation events.
+    setInterval(tick, 700);
+    tick();
 }
 
 /** Tell the MAIN-world script whether to capture, and flush anything buffered. */
 function configurePage(active: boolean) {
-  window.postMessage({
-    src: 'majortom-cfg',
-    active,
-    hideNative: settings?.hideNativeCaptions ?? true,
-    // Body sniffing is only worth its cost while we have nothing better.
-    hungry: !best,
-  }, '*');
+    window.postMessage({
+        src: 'majortom-cfg',
+        active,
+        hideNative: settings?.hideNativeCaptions ?? true,
+        // Body sniffing is only worth its cost while we have nothing better.
+        hungry: !best,
+    }, '*');
 }
 
 /* ── Discovery loop ───────────────────────────────────────────────────────── */
 
 function pickVideo(): HTMLVideoElement | null {
-  const vids = Array.from(document.querySelectorAll('video'))
-    .filter(v => v.readyState > 0 || v.currentSrc || v.src);
-  if (vids.length === 0) return null;
-  // The one actually being watched is the biggest one on screen.
-  return vids.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
+    const vids = Array.from(document.querySelectorAll('video'))
+        .filter(v => v.readyState > 0 || v.currentSrc || v.src);
+    if (vids.length === 0) return null;
+    // The one actually being watched is the biggest one on screen.
+    return vids.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
 }
 
 function tick() {
-  const key = `${location.href}`;
-  if (key !== currentKey) {
-    currentKey = key;
-    onMediaChanged();
-  }
-
-  const v = pickVideo();
-  if (v && v !== video) {
-    log.info('video element attached');
-    video = v;
-    // Generic capture only switches on once a video exists, so the network
-    // hooks stay silent on ordinary pages.
-    if (!pageActivated) {
-      pageActivated = true;
-      configurePage(true);
+    const key = `${location.href}`;
+    if (key !== currentKey) {
+        currentKey = key;
+        onMediaChanged();
     }
-    startSync();
-    mountOverlay();
-    if (adapter && !best) overlay?.setStatus('MajorTom: looking for subtitles…', 4000);
-  }
+
+    const v = pickVideo();
+    if (v && v !== video) {
+        log.info('video element attached');
+        video = v;
+        // Generic capture only switches on once a video exists, so the network
+        // hooks stay silent on ordinary pages.
+        if (!pageActivated) {
+            pageActivated = true;
+            configurePage(true);
+        }
+        startSync();
+        mountOverlay();
+        if (adapter && !best) overlay?.setStatus('MajorTom: looking for subtitles…', 4000);
+    }
 }
 
 function onMediaChanged() {
-  log.info('media changed →', location.href.slice(0, 120));
-  translateToken++;
-  teardownOverlay();
-  best = null;
-  secondary = [];
-  cueHint = 0;
-  currentIndex = -1;
-  pausedForCue = -1;
-  media = mediaInfo(adapter);
-  void loadVocab();
-  void resolveViaAdapter();
+    log.info('media changed →', location.href.slice(0, 120));
+    translateToken++;
+    teardownOverlay();
+    best = null;
+    secondary = [];
+    cueHint = 0;
+    currentIndex = -1;
+    pausedForCue = -1;
+    media = mediaInfo(adapter);
+    void loadVocab();
+    void resolveViaAdapter();
 }
 
 /* ── Cue acquisition ──────────────────────────────────────────────────────── */
@@ -137,103 +142,103 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const ADAPTER_RETRY_MS = [0, 500, 1200, 2500, 5000];
 
 async function resolveViaAdapter() {
-  if (!adapter) return;
-  const token = ++adapterToken;
+    if (!adapter) return;
+    const token = ++adapterToken;
 
-  for (const delay of ADAPTER_RETRY_MS) {
-    if (delay) await sleep(delay);
-    if (token !== adapterToken) return; // navigated away mid-flight
+    for (const delay of ADAPTER_RETRY_MS) {
+        if (delay) await sleep(delay);
+        if (token !== adapterToken) return; // navigated away mid-flight
 
-    try {
-      const tracks = await adapter.resolve();
-      if (token !== adapterToken) return;
-      if (tracks.length > 0) {
-        for (const t of tracks) offerTrack(t);
-        return;
-      }
-    } catch (e) {
-      log.warn(`adapter ${adapter.id} failed:`, (e as Error)?.message);
+        try {
+            const tracks = await adapter.resolve();
+            if (token !== adapterToken) return;
+            if (tracks.length > 0) {
+                for (const t of tracks) offerTrack(t);
+                return;
+            }
+        } catch (e) {
+            log.warn(`adapter ${adapter.id} failed:`, (e as Error)?.message);
+        }
     }
-  }
 
-  log.info(`adapter ${adapter.id}: no subtitles after retries`);
-  if (!best) {
-    overlay?.setStatus('MajorTom: no subtitles for this video', 6000);
-  }
+    log.info(`adapter ${adapter.id}: no subtitles after retries`);
+    if (!best) {
+        overlay?.setStatus('MajorTom: no subtitles for this video', 6000);
+    }
 }
 
 /** Accept a candidate track, keeping the best source seen for this media. */
 function offerTrack(track: CueTrack) {
-  if (track.cues.length === 0) return;
+    if (track.cues.length === 0) return;
 
-  if (best) {
-    const better = SOURCE_RANK[track.source] > SOURCE_RANK[best.source];
-    const sameTrackGrew = best.id === track.id && track.cues.length > best.cues.length;
-    if (!better && !sameTrackGrew) return;
-  }
+    if (best) {
+        const better = SOURCE_RANK[track.source] > SOURCE_RANK[best.source];
+        const sameTrackGrew = best.id === track.id && track.cues.length > best.cues.length;
+        if (!better && !sameTrackGrew) return;
+    }
 
-  const isNew = !best || best.id !== track.id;
-  const wasHungry = !best;
-  best = track;
-  log.info(`cues: ${track.cues.length} from ${track.source} (${track.label})`);
-  if (wasHungry && pageActivated) configurePage(true); // stop body sniffing
+    const isNew = !best || best.id !== track.id;
+    const wasHungry = !best;
+    best = track;
+    log.info(`cues: ${track.cues.length} from ${track.source} (${track.label})`);
+    if (wasHungry && pageActivated) configurePage(true); // stop body sniffing
 
-  mountOverlay();
-  overlay?.setStatus('');
-  if (isNew) void runTranslation();
+    mountOverlay();
+    overlay?.setStatus('');
+    if (isNew) void runTranslation();
 }
 
 function listenToPage() {
-  window.addEventListener('message', e => {
-    const d = e.data as PageMessage;
-    if (e.source !== window || !d || d.src !== 'majortom') return;
+    window.addEventListener('message', e => {
+        const d = e.data as PageMessage;
+        if (e.source !== window || !d || d.src !== 'majortom') return;
 
-    if (d.kind === 'track-cues') {
-      offerTrack({
-        id: `tt:${d.trackId}`, lang: d.lang, label: d.label,
-        source: 'texttrack', cues: d.cues,
-      });
-    } else if (d.kind === 'sub-file') {
-      const cues = parse(d.body, d.url);
-      if (cues.length === 0) return;
-      offerTrack({
-        id: `net:${d.url.slice(0, 120)}`, lang: '', label: 'captured',
-        source: 'network', cues,
-      });
-    } else if (d.kind === 'media-meta' && d.title) {
-      media = { ...media, title: d.title };
-    }
-  });
+        if (d.kind === 'track-cues') {
+            offerTrack({
+                id: `tt:${d.trackId}`, lang: d.lang, label: d.label,
+                source: 'texttrack', cues: d.cues,
+            });
+        } else if (d.kind === 'sub-file') {
+            const cues = parse(d.body, d.url);
+            if (cues.length === 0) return;
+            offerTrack({
+                id: `net:${d.url.slice(0, 120)}`, lang: '', label: 'captured',
+                source: 'network', cues,
+            });
+        } else if (d.kind === 'media-meta' && d.title) {
+            media = {...media, title: d.title};
+        }
+    });
 }
 
 /* ── Translation ──────────────────────────────────────────────────────────── */
 
 async function runTranslation() {
-  if (!best) return;
-  const token = ++translateToken;
-  const cues = best.cues;
+    if (!best) return;
+    const token = ++translateToken;
+    const cues = best.cues;
 
-  secondary = new Array(cues.length).fill('');
-  const needsWork = settings.showSecondary
-    && (adapter?.translated !== undefined || (settings.provider === 'deepl' && !!settings.deeplKey.trim()));
-  overlay?.setStatus(needsWork ? 'translating…' : '');
+    secondary = new Array(cues.length).fill('');
+    const needsWork = settings.showSecondary
+        && (adapter?.translated !== undefined || (settings.provider === 'deepl' && !!settings.deeplKey.trim()));
+    overlay?.setStatus(needsWork ? 'translating…' : '');
 
-  const lines = await translateCues({
-    cues,
-    sourceLangHint: best.lang,
-    settings,
-    media,
-    adapter,
-    onProgress: (partial, done) => {
-      if (token !== translateToken) return;
-      secondary = partial;
-      if (done) overlay?.setStatus('');
-    },
-  });
+    const lines = await translateCues({
+        cues,
+        sourceLangHint: best.lang,
+        settings,
+        media,
+        adapter,
+        onProgress: (partial, done) => {
+            if (token !== translateToken) return;
+            secondary = partial;
+            if (done) overlay?.setStatus('');
+        },
+    });
 
-  if (token !== translateToken) return;
-  secondary = lines;
-  overlay?.setStatus('');
+    if (token !== translateToken) return;
+    secondary = lines;
+    overlay?.setStatus('');
 }
 
 /* ── Overlay + playback sync ──────────────────────────────────────────────── */
@@ -243,87 +248,89 @@ async function runTranslation() {
  * status line can report what is happening — including that nothing was found.
  */
 function mountOverlay() {
-  if (!video || overlay) return;
-  applyNativeCaptionCss();
+    if (!video || overlay) return;
+    applyNativeCaptionCss();
 
-  overlay = new Overlay(video, settings, {
-    isSaved: w => savedWords.has(w),
-    lookup: async w => {
-      const hit = lookupCache.get(w);
-      if (hit !== undefined) return hit;
-      const tr = await translateOne(w, best?.lang || '', settings);
-      // Cache misses too — a word that has no translation should not be
-      // re-requested every time it reappears on screen.
-      lookupCache.set(w, tr);
-      return tr;
-    },
-    saveWord: async (word, translation) => {
-      const entry: VocabEntry = {
-        word,
-        translation,
-        context: best?.cues[currentIndex]?.text || '',
-        contextTranslation: secondary[currentIndex] || '',
-        site: media.site,
-        title: media.title,
-        url: media.url,
-        time: video?.currentTime || 0,
-        createdAt: new Date().toISOString(),
-        starred: false,
-      };
-      savedWords.add(word);
-      await addWord(entry);
-    },
-    removeWord: async word => {
-      savedWords.delete(word);
-      await removeWordEverywhere(word);
-    },
-    patchSettings: patch => { void setSettings(patch); },
-    seekToCue: delta => seekCue(delta),
-    replayCue: () => replayCue(),
-  });
+    overlay = new Overlay(video, settings, {
+        isSaved: w => savedWords.has(w),
+        lookup: async w => {
+            const hit = lookupCache.get(w);
+            if (hit !== undefined) return hit;
+            const tr = await translateOne(w, best?.lang || '', settings);
+            // Cache misses too — a word that has no translation should not be
+            // re-requested every time it reappears on screen.
+            lookupCache.set(w, tr);
+            return tr;
+        },
+        saveWord: async (word, translation) => {
+            const entry: VocabEntry = {
+                word,
+                translation,
+                context: best?.cues[currentIndex]?.text || '',
+                contextTranslation: secondary[currentIndex] || '',
+                site: media.site,
+                title: media.title,
+                url: media.url,
+                time: video?.currentTime || 0,
+                createdAt: new Date().toISOString(),
+                starred: false,
+            };
+            savedWords.add(word);
+            await addWord(entry);
+        },
+        removeWord: async word => {
+            savedWords.delete(word);
+            await removeWordEverywhere(word);
+        },
+        patchSettings: patch => {
+            void setSettings(patch);
+        },
+        seekToCue: delta => seekCue(delta),
+        replayCue: () => replayCue(),
+    });
 
-  overlay.mount();
-  startSync();
-  log.info('overlay mounted');
+    overlay.mount();
+    startSync();
+    log.info('overlay mounted');
 }
 
 function teardownOverlay() {
-  overlay?.unmount();
-  overlay = null;
-  cancelAnimationFrame(rafId);
-  rafId = 0;
-  document.getElementById('majortom-native-css')?.remove();
+    overlay?.unmount();
+    overlay = null;
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+    document.getElementById('majortom-native-css')?.remove();
 }
 
 function startSync() {
-  cancelAnimationFrame(rafId);
-  const frame = () => {
+    cancelAnimationFrame(rafId);
+    const frame = () => {
+        rafId = requestAnimationFrame(frame);
+        if (!video || !best || !overlay) return;
+
+        const t = video.currentTime;
+        const i = cueIndexAt(best.cues, t, cueHint);
+        if (i >= 0) cueHint = i;
+
+        if (i !== currentIndex) {
+            currentIndex = i;
+            overlay.setLines(i >= 0 ? best.cues[i].text : '', i >= 0 ? (secondary[i] || '') : '');
+        } else if (i >= 0 && overlay) {
+            // Translation may have arrived after the cue was first shown.
+            overlay.setLines(best.cues[i].text, secondary[i] || '');
+        }
+
+        if (settings.loopCue) loopCue(t);
+        else if (settings.autoPause) autoPause(t);
+    };
     rafId = requestAnimationFrame(frame);
-    if (!video || !best || !overlay) return;
-
-    const t = video.currentTime;
-    const i = cueIndexAt(best.cues, t, cueHint);
-    if (i >= 0) cueHint = i;
-
-    if (i !== currentIndex) {
-      currentIndex = i;
-      overlay.setLines(i >= 0 ? best.cues[i].text : '', i >= 0 ? (secondary[i] || '') : '');
-    } else if (i >= 0 && overlay) {
-      // Translation may have arrived after the cue was first shown.
-      overlay.setLines(best.cues[i].text, secondary[i] || '');
-    }
-
-    if (settings.loopCue) loopCue(t);
-    else if (settings.autoPause) autoPause(t);
-  };
-  rafId = requestAnimationFrame(frame);
 }
 
 /** Jump back to the start of the current line as soon as it finishes. */
 function loopCue(t: number) {
-  if (!video || !best || video.paused) return;
-  const cue = best.cues[cueHint];
-  if (cue && t > cue.end) video.currentTime = cue.start + 0.01;
+    if (!video || !best || video.paused) return;
+    const cue = best.cues[cueHint];
+    if (cue && t > cue.end) video.currentTime = cue.start + 0.01;
 }
 
 /**
@@ -331,70 +338,72 @@ function loopCue(t: number) {
  * moves on normally rather than re-pausing on the same cue.
  */
 function autoPause(t: number) {
-  if (!video || !best || video.paused) return;
-  const prev = cueHint;
-  const cue = best.cues[prev];
-  if (!cue) return;
-  if (t > cue.end && t < cue.end + 0.35 && pausedForCue !== prev) {
-    pausedForCue = prev;
-    video.pause();
-  }
+    if (!video || !best || video.paused) return;
+    const prev = cueHint;
+    const cue = best.cues[prev];
+    if (!cue) return;
+    if (t > cue.end && t < cue.end + 0.35 && pausedForCue !== prev) {
+        pausedForCue = prev;
+        video.pause();
+    }
 }
 
 function seekCue(delta: number) {
-  if (!video || !best) return;
-  const at = cueIndexAt(best.cues, video.currentTime, cueHint);
-  let target: number;
-  if (at >= 0) {
-    target = at + delta;
-  } else {
-    // Between cues: step to the neighbouring one in the requested direction.
-    let next = best.cues.findIndex(c => c.start > video!.currentTime);
-    if (next < 0) next = best.cues.length;
-    target = delta > 0 ? next : next - 1;
-  }
-  target = Math.max(0, Math.min(best.cues.length - 1, target));
-  video.currentTime = best.cues[target].start + 0.01;
-  pausedForCue = -1;
-  if (video.paused) void video.play().catch(() => {});
+    if (!video || !best) return;
+    const at = cueIndexAt(best.cues, video.currentTime, cueHint);
+    let target: number;
+    if (at >= 0) {
+        target = at + delta;
+    } else {
+        // Between cues: step to the neighbouring one in the requested direction.
+        let next = best.cues.findIndex(c => c.start > video!.currentTime);
+        if (next < 0) next = best.cues.length;
+        target = delta > 0 ? next : next - 1;
+    }
+    target = Math.max(0, Math.min(best.cues.length - 1, target));
+    video.currentTime = best.cues[target].start + 0.01;
+    pausedForCue = -1;
+    if (video.paused) void video.play().catch(() => {
+    });
 }
 
 function replayCue() {
-  if (!video || !best) return;
-  const i = cueIndexAt(best.cues, video.currentTime, cueHint);
-  const cue = best.cues[i >= 0 ? i : Math.max(0, cueHint)];
-  if (!cue) return;
-  video.currentTime = cue.start + 0.01;
-  pausedForCue = -1;
-  void video.play().catch(() => {});
+    if (!video || !best) return;
+    const i = cueIndexAt(best.cues, video.currentTime, cueHint);
+    const cue = best.cues[i >= 0 ? i : Math.max(0, cueHint)];
+    if (!cue) return;
+    video.currentTime = cue.start + 0.01;
+    pausedForCue = -1;
+    void video.play().catch(() => {
+    });
 }
 
 /* ── Native captions ──────────────────────────────────────────────────────── */
 
 function applyNativeCaptionCss() {
-  document.getElementById('majortom-native-css')?.remove();
-  if (!settings.hideNativeCaptions) return;
-  const style = document.createElement('style');
-  style.id = 'majortom-native-css';
-  style.textContent = `${NATIVE_CAPTION_SELECTORS.join(',\n')} { display: none !important; }`;
-  (document.head || document.documentElement).appendChild(style);
+    document.getElementById('majortom-native-css')?.remove();
+    if (!settings.hideNativeCaptions) return;
+    const style = document.createElement('style');
+    style.id = 'majortom-native-css';
+    style.textContent = `${NATIVE_CAPTION_SELECTORS.join(',\n')} { display: none !important; }`;
+    (document.head || document.documentElement).appendChild(style);
 }
 
 /* ── Vocabulary ───────────────────────────────────────────────────────────── */
 
 async function loadVocab() {
-  const vocab = await getVocab();
-  savedWords = new Set(vocab.map(v => v.word));
-  overlay?.refreshSaved();
+    const vocab = await getVocab();
+    savedWords = new Set(vocab.map(v => v.word));
+    overlay?.refreshSaved();
 }
 
 /* ── Keyboard ─────────────────────────────────────────────────────────────── */
 
 function isTyping(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el) return false;
-  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;
-  return !!el.closest?.('[contenteditable=""], [contenteditable="true"]');
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;
+    return !!el.closest?.('[contenteditable=""], [contenteditable="true"]');
 }
 
 /**
@@ -402,34 +411,53 @@ function isTyping(target: EventTarget | null): boolean {
  * arrows, and we should never fight the player for its own shortcuts.
  */
 function installKeyboard() {
-  document.addEventListener('keydown', e => {
-    if (!overlay || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+    document.addEventListener('keydown', e => {
+        if (!overlay || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
 
-    switch (e.key) {
-      case '[': e.preventDefault(); e.stopPropagation(); seekCue(-1); break;
-      case ']': e.preventDefault(); e.stopPropagation(); seekCue(1); break;
-      case '\\': e.preventDefault(); e.stopPropagation(); replayCue(); break;
-      case 'p': case 'P':
-        e.preventDefault(); e.stopPropagation();
-        void setSettings({ autoPause: !settings.autoPause });
-        break;
-      case 'h': case 'H':
-        e.preventDefault(); e.stopPropagation();
-        void setSettings({ blurSecondary: !settings.blurSecondary });
-        break;
-      case 'l': case 'L':
-        e.preventDefault(); e.stopPropagation();
-        void setSettings({ loopCue: !settings.loopCue });
-        break;
-      default: break;
-    }
-  }, true);
+        switch (e.key) {
+            case '[':
+                e.preventDefault();
+                e.stopPropagation();
+                seekCue(-1);
+                break;
+            case ']':
+                e.preventDefault();
+                e.stopPropagation();
+                seekCue(1);
+                break;
+            case '\\':
+                e.preventDefault();
+                e.stopPropagation();
+                replayCue();
+                break;
+            case 'p':
+            case 'P':
+                e.preventDefault();
+                e.stopPropagation();
+                void setSettings({autoPause: !settings.autoPause});
+                break;
+            case 'h':
+            case 'H':
+                e.preventDefault();
+                e.stopPropagation();
+                void setSettings({blurSecondary: !settings.blurSecondary});
+                break;
+            case 'l':
+            case 'L':
+                e.preventDefault();
+                e.stopPropagation();
+                void setSettings({loopCue: !settings.loopCue});
+                break;
+            default:
+                break;
+        }
+    }, true);
 }
 
 /* ── Go ───────────────────────────────────────────────────────────────────── */
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.mt_vocab) void loadVocab();
+    if (area === 'local' && changes.mt_vocab) void loadVocab();
 });
 
 void boot();
