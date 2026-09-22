@@ -46,13 +46,8 @@ struct ShowDetailView: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                if !source.site.isEmpty {
-                    Text(source.site).pill(Theme.secondary)
-                }
-                Text(source.lastSavedAt.formatted(date: .abbreviated, time: .omitted))
-                    .font(Theme.ui(13))
-                    .foregroundStyle(Theme.faint)
+            if !source.site.isEmpty {
+                Text(Platform.displayName(for: source.site)).pill(Theme.secondary)
             }
 
             Picker("", selection: $kind) {

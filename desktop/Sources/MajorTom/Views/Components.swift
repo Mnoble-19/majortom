@@ -159,15 +159,15 @@ struct RecentShowRow: View {
                 Text(Platform.displayName(for: source.site))
                     .pill(Theme.secondary)
 
-                Text("\(source.wordCount)")
-                    .font(Theme.ui(14, .semibold))
-                    .foregroundStyle(Theme.muted)
-                    .frame(width: 34, alignment: .trailing)
-
-                Text(source.lastSavedAt.formatted(date: .abbreviated, time: .omitted))
-                    .font(Theme.ui(13))
-                    .foregroundStyle(Theme.faint)
-                    .frame(width: 100, alignment: .trailing)
+                HStack(spacing: 5) {
+                    Text("\(source.wordCount)")
+                        .font(Theme.ui(14, .semibold))
+                        .foregroundStyle(Theme.muted)
+                    Text(source.wordCount == 1 ? "word" : "words")
+                        .font(Theme.ui(13))
+                        .foregroundStyle(Theme.faint)
+                }
+                .frame(width: 90, alignment: .trailing)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
