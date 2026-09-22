@@ -99,6 +99,7 @@ extension/
       popup.ts / popup.html
     shared/                 types, config, logger, storage, messaging
 scripts/                    icons, smoke tests, dev log server
+desktop/                    macOS app the saved words sync into — see desktop/README.md
 ```
 
 Adding a site means writing one file in `capture/adapters/` and listing it in
