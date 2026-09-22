@@ -26,8 +26,27 @@ final class Store: ObservableObject {
 
     deinit { timer?.invalidate() }
 
+    /// Already ordered by most recently saved-into, so callers can take a
+    /// prefix for "recent" without another query.
     func sources(of kind: SourceKind) -> [Source] {
         sources.filter { $0.kind == kind }
+    }
+
+    func sources(of kind: SourceKind, site: String) -> [Source] {
+        sources.filter { $0.kind == kind && $0.site == site }
+    }
+
+    func platforms(of kind: SourceKind) -> [Platform] {
+        Dictionary(grouping: sources(of: kind), by: \.site)
+            .map { site, group in
+                Platform(
+                    id: site,
+                    showCount: group.count,
+                    wordCount: group.reduce(0) { $0 + $1.wordCount },
+                    lastSavedAt: group.map(\.lastSavedAt).max() ?? .distantPast
+                )
+            }
+            .sorted { $0.lastSavedAt > $1.lastSavedAt }
     }
 
     func reloadIfChanged() {
@@ -90,28 +109,6 @@ final class Store: ObservableObject {
                 position: r.double(7),
                 starred: r.bool(8),
                 createdAt: r.date(9)
-            )
-        }) ?? []
-    }
-
-    /// Recently saved items across every show, for the launch screen list.
-    func recentItems(limit: Int = 40) -> [(item: Item, sourceTitle: String)] {
-        guard let db else { return [] }
-        return (try? db.query("""
-            SELECT i.id, i.source_id, i.kind, i.text, i.translation, i.context,
-                   i.context_translation, i.position, i.starred, i.created_at, s.title
-            FROM item i JOIN source s ON s.id = i.source_id
-            ORDER BY i.created_at DESC, i.id DESC LIMIT ?
-            """, [limit]) { r in
-            (
-                Item(
-                    id: r.int(0), sourceID: r.int(1),
-                    kind: ItemKind(rawValue: r.string(2)) ?? .word,
-                    text: r.string(3), translation: r.string(4), context: r.string(5),
-                    contextTranslation: r.string(6), position: r.double(7),
-                    starred: r.bool(8), createdAt: r.date(9)
-                ),
-                r.string(10)
             )
         }) ?? []
     }

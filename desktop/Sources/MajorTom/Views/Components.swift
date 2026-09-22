@@ -48,20 +48,67 @@ struct SectionHeader: View {
     }
 }
 
-struct ShowCard: View {
-    let source: Source
+struct PlatformCard: View {
+    let platform: Platform
     let onOpen: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
+                Image(systemName: platform.icon)
+                    .font(.system(size: 30))
+                    .foregroundStyle(Theme.accent.opacity(hovering ? 1 : 0.7))
+
+                Spacer(minLength: 0)
+
+                Text(platform.name)
+                    .font(Theme.serif(24, .semibold))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Text("\(platform.showCount)")
+                        .font(Theme.ui(14, .semibold))
+                        .foregroundStyle(Theme.muted)
+                    Text(platform.showCount == 1 ? "show" : "shows")
+                        .font(Theme.ui(13))
+                        .foregroundStyle(Theme.faint)
+                    Text("·").foregroundStyle(Theme.faint)
+                    Text("\(platform.wordCount)")
+                        .font(Theme.ui(14, .semibold))
+                        .foregroundStyle(Theme.muted)
+                    Text(platform.wordCount == 1 ? "word" : "words")
+                        .font(Theme.ui(13))
+                        .foregroundStyle(Theme.faint)
+                }
+            }
+            .padding(22)
+            .frame(height: 200, alignment: .topLeading)
+            .frame(maxWidth: .infinity)
+            .cardSurface(hovering: hovering)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.14), value: hovering)
+    }
+}
+
+struct ShowCard: View {
+    let source: Source
+    var showsPlatform: Bool = false
+    let onOpen: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 10) {
                 Image(systemName: "play.rectangle.fill")
-                    .font(.system(size: 26))
+                    .font(.system(size: 20))
                     .foregroundStyle(Theme.accent.opacity(hovering ? 1 : 0.7))
 
                 Text(source.title)
-                    .font(Theme.serif(18, .medium))
+                    .font(Theme.serif(16, .medium))
                     .foregroundStyle(Theme.text)
                     .lineLimit(3)
                     .multilineTextAlignment(.leading)
@@ -71,25 +118,68 @@ struct ShowCard: View {
                 Spacer(minLength: 0)
 
                 HStack(spacing: 8) {
-                    Text(source.site.isEmpty ? "unknown" : source.site)
-                        .pill(Theme.secondary)
+                    if showsPlatform {
+                        Text(Platform.displayName(for: source.site)).pill(Theme.secondary)
+                    }
                     Spacer()
                     Text("\(source.wordCount)")
-                        .font(Theme.ui(15, .semibold))
+                        .font(Theme.ui(14, .semibold))
                         .foregroundStyle(Theme.muted)
                     Text(source.wordCount == 1 ? "word" : "words")
-                        .font(Theme.ui(13))
+                        .font(Theme.ui(12))
                         .foregroundStyle(Theme.faint)
                 }
             }
-            .padding(20)
-            .frame(height: 210, alignment: .topLeading)
+            .padding(16)
+            .frame(height: 165, alignment: .topLeading)
             .frame(maxWidth: .infinity)
             .cardSurface(hovering: hovering)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.14), value: hovering)
+    }
+}
+
+/// A recently watched episode, on the landing screen — any platform.
+struct RecentShowRow: View {
+    let source: Source
+    let onOpen: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 16) {
+                Text(source.title)
+                    .font(Theme.serif(16, .medium))
+                    .foregroundStyle(Theme.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .lineLimit(1)
+
+                Text(Platform.displayName(for: source.site))
+                    .pill(Theme.secondary)
+
+                Text("\(source.wordCount)")
+                    .font(Theme.ui(14, .semibold))
+                    .foregroundStyle(Theme.muted)
+                    .frame(width: 34, alignment: .trailing)
+
+                Text(source.lastSavedAt.formatted(date: .abbreviated, time: .omitted))
+                    .font(Theme.ui(13))
+                    .foregroundStyle(Theme.faint)
+                    .frame(width: 100, alignment: .trailing)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.faint.opacity(hovering ? 1 : 0.4))
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+            .background(hovering ? Color.white.opacity(0.03) : .clear)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
     }
 }
 

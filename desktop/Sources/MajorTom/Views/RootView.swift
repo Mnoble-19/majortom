@@ -1,9 +1,15 @@
 import SwiftUI
 
+/// Platforms → that platform's shows → one show's words.
+enum Route: Hashable {
+    case platform(kind: SourceKind, site: String)
+    case show(Source)
+}
+
 struct RootView: View {
     @EnvironmentObject private var store: Store
     @State private var tab: SourceKind = .show
-    @State private var path: [Source] = []
+    @State private var path: [Route] = []
 
     var body: some View {
         NavigationSplitView {
@@ -11,7 +17,16 @@ struct RootView: View {
         } detail: {
             NavigationStack(path: $path) {
                 content
-                    .navigationDestination(for: Source.self) { ShowDetailView(source: $0) }
+                    .navigationDestination(for: Route.self) { route in
+                        switch route {
+                        case let .platform(kind, site):
+                            PlatformDetailView(kind: kind, site: site) {
+                                path.append(.show($0))
+                            }
+                        case let .show(source):
+                            ShowDetailView(source: source)
+                        }
+                    }
             }
         }
         .background(Theme.bg)
@@ -78,7 +93,11 @@ struct RootView: View {
         } else {
             switch tab {
             case .show:
-                ShowsView(onOpen: { path.append($0) })
+                PlatformsView(
+                    kind: .show,
+                    onOpenPlatform: { path.append(.platform(kind: .show, site: $0.id)) },
+                    onOpenShow: { path.append(.show($0)) }
+                )
             case .call:
                 EmptyState(
                     icon: SourceKind.call.icon,

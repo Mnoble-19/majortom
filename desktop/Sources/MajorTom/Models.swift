@@ -22,6 +22,44 @@ struct Source: Identifiable, Hashable {
     var lastSavedAt: Date
 }
 
+/// Sources grouped by the site they came from. Derived, never stored: the
+/// grouping key is `source.site`.
+struct Platform: Identifiable, Hashable {
+    /// The raw host, e.g. "ardmediathek.de".
+    var id: String
+    var showCount: Int
+    var wordCount: Int
+    var lastSavedAt: Date
+
+    var name: String { Platform.displayName(for: id) }
+
+    static func displayName(for site: String) -> String {
+        let host = site.lowercased()
+            .replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
+        guard !host.isEmpty else { return "Unknown" }
+
+        let known = [
+            "youtube": "YouTube", "ardmediathek": "ARD", "ard.de": "ARD",
+            "zdf": "ZDF", "netflix": "Netflix", "disneyplus": "Disney+",
+            "arte": "ARTE", "vimeo": "Vimeo", "twitch": "Twitch",
+            "dailymotion": "Dailymotion", "3sat": "3sat", "servustv": "ServusTV",
+        ]
+        if let hit = known.first(where: { host.contains($0.key) }) { return hit.value }
+
+        let base = host.split(separator: ".").dropLast().last.map(String.init) ?? host
+        return base.prefix(1).uppercased() + base.dropFirst()
+    }
+
+    var icon: String {
+        switch name {
+        case "YouTube", "Vimeo", "Dailymotion": return "play.rectangle.fill"
+        case "Netflix", "Disney+": return "film.fill"
+        case "Twitch": return "dot.radiowaves.left.and.right"
+        default: return "antenna.radiowaves.left.and.right"
+        }
+    }
+}
+
 struct Item: Identifiable, Hashable {
     var id: Int64
     var sourceID: Int64
