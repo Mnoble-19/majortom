@@ -45,8 +45,11 @@ function MajorTom:init()
                 text = _("Save to MajorTom"),
                 callback = function()
                     local text = util.cleanupSelectedText(this.selected_text.text)
+                    -- Read the context before closing: onClose drops the
+                    -- selection, and the context is derived from it.
+                    local context = self:context()
                     this:onClose()
-                    self:translateThenSave(text)
+                    self:translateThenSave(text, context)
                 end,
             }
         end)
@@ -62,7 +65,7 @@ function MajorTom:init()
                 local word = dict_popup.lookupword
                 -- The definition is already on screen and offline, so there is
                 -- nothing to ask and nothing to fetch: save it straight away.
-                self:save("word", word, self:firstLine(dict_popup.definition))
+                self:save("word", word, self:firstLine(dict_popup.definition), self:context())
             end,
         })
     end
@@ -94,7 +97,7 @@ function MajorTom:context()
     return util.trim((prev or "") .. " " .. (next or ""))
 end
 
-function MajorTom:translateThenSave(text)
+function MajorTom:translateThenSave(text, context)
     if not text or text == "" then return end
     Trapper:wrap(function()
         local completed, translation = Trapper:dismissableRunInSubprocess(function()
@@ -110,7 +113,7 @@ function MajorTom:translateThenSave(text)
 
         local word_first = looksLikeWord(text)
         local save = function(kind)
-            self:save(kind, text, translation or "")
+            self:save(kind, text, translation or "", context)
         end
 
         UIManager:show(ConfirmBox:new{
@@ -128,13 +131,13 @@ function MajorTom:translateThenSave(text)
     end)
 end
 
-function MajorTom:save(kind, text, translation)
+function MajorTom:save(kind, text, translation, context)
     local book = self:bookInfo()
     local entry = {
         kind = kind,
         text = text,
         translation = translation or "",
-        context = self:context(),
+        context = context or "",
         page = self.ui and self.ui.getCurrentPage and self.ui:getCurrentPage() or 0,
         book = book.title,
         author = book.author,
