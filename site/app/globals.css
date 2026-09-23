@@ -1,0 +1,188 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Design tokens
+
+   The palette is lifted from the extension's own overlay stylesheet, so the
+   site and the product read as one thing:
+     amber  #ffd479 — a saved word            (the payoff; primary accent)
+     signal #7ec8e3 — the live subtitle line  (interaction; secondary accent)
+   Everything else is a warm near-black and a warm off-white.
+   ────────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  --color-ground: #0b0b0d;
+  --color-ground-2: #101013;
+  --color-ground-3: #16161a;
+  --color-ink: #f4f2ec;
+  --color-muted: #93949c;
+  --color-faint: #62636c;
+
+  --color-amber: #ffd479;
+  --color-amber-dim: #8a7233;
+  --color-signal: #7ec8e3;
+  --color-signal-bright: #9fe0f5;
+
+  --color-line: rgba(255, 255, 255, 0.09);
+  --color-line-strong: rgba(255, 255, 255, 0.17);
+
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-space-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: var(--font-newsreader), Georgia, "Times New Roman", serif;
+
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+
+* {
+  border-color: var(--color-line);
+}
+
+html {
+  scroll-behavior: smooth;
+  /* The sticky header must not cover an anchored heading. */
+  scroll-padding-top: 6.5rem;
+  background: var(--color-ground);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-amber) 26%, transparent);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* ── Typography utilities ─────────────────────────────────────────────────
+   The reference sites both set display type very tight: roughly -0.045em of
+   tracking against a sub-1 line-height. Small type goes the other way — the
+   mono micro-labels open right up.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@utility display-xl {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(2.75rem, 7.4vw, 6.25rem);
+  line-height: 0.92;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+
+@utility display-lg {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(2.25rem, 5.2vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+@utility display-md {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(1.6rem, 2.9vw, 2.25rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+@utility display-sm {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.125rem;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+}
+
+/* The italic serif clause that closes a headline — the one flourish this
+   design allows itself. */
+@utility accent {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 300;
+  letter-spacing: -0.015em;
+}
+
+@utility micro {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+@utility lede {
+  font-size: clamp(1.0625rem, 1.35vw, 1.1875rem);
+  line-height: 1.62;
+  color: var(--color-muted);
+  text-wrap: pretty;
+}
+
+@utility prose-p {
+  color: var(--color-muted);
+  line-height: 1.68;
+  text-wrap: pretty;
+}
+
+/* ── Inline code ──────────────────────────────────────────────────────────── */
+
+@utility code-inline {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  letter-spacing: -0.01em;
+  color: var(--color-signal);
+  background: color-mix(in oklab, var(--color-signal) 9%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-signal) 16%, transparent);
+  border-radius: 0.3rem;
+  padding: 0.08em 0.36em;
+  white-space: nowrap;
+}
+
+/* ── Reveal-on-scroll ─────────────────────────────────────────────────────── */
+
+@utility reveal-hidden {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+@utility reveal-shown {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.75s var(--ease-out-soft),
+    transform 0.75s var(--ease-out-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal-hidden {
+    opacity: 1;
+    transform: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
