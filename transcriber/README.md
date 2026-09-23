@@ -42,8 +42,8 @@ deliberate trade.
 | Two tracks running as one session | works |
 | Click-to-translate, local model | works |
 | The window | built, not yet used on a real call |
-| iOS app | not started |
-| Sync over local wifi | not started |
+| iPhone app | builds and launches; never run on real hardware |
+| Sync over local wifi | works — discovery and round trip both verified |
 
 ```bash
 ./build.sh && open "build/MajorTom Calls.app"
@@ -57,6 +57,9 @@ swift run Probe --tap Signal 60    # a named app instead
 swift run Probe --file clip.aiff   # a file, paced at 1x
 swift run Probe 30                 # the mic
 swift run Probe --db               # database write path, no audio
+swift run Probe --serve            # the Mac end of the phone sync
+swift run Probe --discover         # browse for it, as the phone does
+swift run Probe --sync Ana         # find the Mac and send it words
 ```
 
 `MAJORTOM_DB` points at a different SQLite file — always use it when testing, so
@@ -119,6 +122,43 @@ invisible; "dropped off" in your library is not. Settings has the toggle.
 
 A cold llama.cpp with `--sleep-idle-seconds` has to load the model before it
 answers anything, which took 24s here. Hence the 180s request timeout.
+
+## The phone
+
+`phone/` is an iPhone app for the same thing in person: one microphone, tap
+words as they come up, sync to the Mac afterwards. It has no model and no
+database — words go over untranslated and the Mac fills them in.
+
+It sits under `transcriber/` rather than beside it because it shares `CallCore`
+with the Mac through a relative package path. `Database` and `Session` are
+macOS-only inside that package; the sync payload and client are shared, so both
+ends of the protocol live in one file.
+
+### Which recognizer the phone gets
+
+`SpeechTranscriber` is gated on hardware and Apple publishes no device list.
+From their documentation:
+
+> **isAvailable** — "A Boolean value that indicates whether this module is
+> available given the device's hardware and capabilities."
+>
+> **DictationTranscriber** — "similar to system dictation features and
+> compatible with older devices."
+>
+> "Use the [`isAvailable`] properties to see if the current device supports the
+> speech-to-text models used by [`SpeechTranscriber`]. If it does not, consider
+> disabling the feature or using [`DictationTranscriber`] instead."
+
+So the app asks at launch and takes whichever it can get. The setup screen says
+which one it chose, because that is the only way to find out for a given phone.
+A simulator cannot answer it — it runs on the Mac's hardware, so it reports
+whatever the Mac supports.
+
+### Two Info.plist keys that fail silently
+
+Bonjour browsing on iOS needs `NSLocalNetworkUsageDescription` *and*
+`NSBonjourServices` listing the service type up front. Without them the browser
+starts, reports no error, and finds nothing for ever.
 
 ## Two things about SpeechTranscriber that cost a while
 

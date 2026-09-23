@@ -15,6 +15,10 @@ final class PhoneSession {
     private(set) var isRunning = false
     private(set) var error: String?
     private(set) var modelState: ModelState = .unknown
+    /// Which recognizer this device actually got. Apple gates the better one on
+    /// hardware and publishes no device list, so the only way to know is to ask
+    /// here and look.
+    private(set) var engine: Transcriber.Engine?
 
     var person = ""
     var localeIdentifier = "de-DE"
@@ -63,6 +67,7 @@ final class PhoneSession {
 
         do {
             let transcriber = Transcriber(locale: Locale(identifier: localeIdentifier), speaker: .them)
+            engine = transcriber.engine
             try await transcriber.start()
             let mic = MicSource()
             try mic.start { buffer, time in transcriber.append(buffer, at: time) }

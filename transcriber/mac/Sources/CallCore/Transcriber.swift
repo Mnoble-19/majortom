@@ -83,7 +83,33 @@ public enum TranscriberError: Error, CustomStringConvertible {
 public final class Transcriber: @unchecked Sendable {
     public let speaker: Speaker
 
-    private let module: SpeechTranscriber
+    /// Which recognizer is doing the work.
+    public enum Engine: String, Sendable {
+        /// The iOS 26 / macOS 26 model. Better, but not on every device —
+        /// `SpeechTranscriber.isAvailable` is false where the hardware cannot
+        /// run it, which includes iPhones without Apple Intelligence.
+        case speechTranscriber
+        /// The dictation assets, which exist everywhere. The fallback.
+        case dictationTranscriber
+    }
+
+    public let engine: Engine
+
+    /// Both conform to `SpeechModule` and both produce a `Result` with the same
+    /// shape, so only construction and the results loop differ.
+    private enum Recognizer {
+        case modern(SpeechTranscriber)
+        case dictation(DictationTranscriber)
+
+        var module: any SpeechModule {
+            switch self {
+            case .modern(let m): return m
+            case .dictation(let m): return m
+            }
+        }
+    }
+
+    private let recognizer: Recognizer
     private let analyzer: SpeechAnalyzer
     private let input: AsyncStream<AnalyzerInput>
     private let feed: AsyncStream<AnalyzerInput>.Continuation
@@ -100,17 +126,32 @@ public final class Transcriber: @unchecked Sendable {
 
     public init(locale: Locale, speaker: Speaker) {
         self.speaker = speaker
-        module = SpeechTranscriber(
-            locale: locale,
-            transcriptionOptions: [],
-            // Without `.fastResults` the analyzer reports nothing at all until
-            // the stream is finalized — the whole call would arrive at once,
-            // when it is already over. With it, volatile text streams about
-            // once a second, which is what the live captions are made of.
-            reportingOptions: [.volatileResults, .fastResults],
-            attributeOptions: [.audioTimeRange]
-        )
-        analyzer = SpeechAnalyzer(modules: [module])
+
+        if SpeechTranscriber.isAvailable {
+            engine = .speechTranscriber
+            recognizer = .modern(SpeechTranscriber(
+                locale: locale,
+                transcriptionOptions: [],
+                // Without `.fastResults` the analyzer reports nothing at all
+                // until the stream is finalized — the whole call would arrive
+                // at once, when it is already over. With it, volatile text
+                // streams about once a second, which is what the live captions
+                // are made of.
+                reportingOptions: [.volatileResults, .fastResults],
+                attributeOptions: [.audioTimeRange]
+            ))
+        } else {
+            // `frequentFinalization` is this recognizer's equivalent knob.
+            engine = .dictationTranscriber
+            recognizer = .dictation(DictationTranscriber(
+                locale: locale,
+                contentHints: [],
+                transcriptionOptions: [],
+                reportingOptions: [.volatileResults, .frequentFinalization],
+                attributeOptions: [.audioTimeRange]
+            ))
+        }
+        analyzer = SpeechAnalyzer(modules: [recognizer.module])
         let (stream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
         input = stream
         feed = continuation
@@ -122,7 +163,9 @@ public final class Transcriber: @unchecked Sendable {
     /// Downloads the locale's model if it is not already on the machine. Only
     /// the first run needs the network; after that everything is local.
     public static func ensureModel(locale: Locale, progress: ((Double) -> Void)? = nil) async throws {
-        let probe = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+        let probe: any SpeechModule = SpeechTranscriber.isAvailable
+            ? SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+            : DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
         switch await AssetInventory.status(forModules: [probe]) {
         case .installed:
             return
@@ -144,7 +187,8 @@ public final class Transcriber: @unchecked Sendable {
     }
 
     public func start() async throws {
-        analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module])
+        analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
+            compatibleWith: [recognizer.module])
         try await analyzer.prepareToAnalyze(in: analyzerFormat)
         pump = Task { [weak self] in await self?.drainResults() }
         try await analyzer.start(inputSequence: input)
@@ -166,24 +210,31 @@ public final class Transcriber: @unchecked Sendable {
 
     private func drainResults() async {
         do {
-            for try await result in module.results {
-                let text = String(result.text.characters)
-                if result.isFinal {
-                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmed.isEmpty else { continue }
-                    let start = result.range.start.seconds
-                    emit.yield(.line(Line(
-                        speaker: speaker,
-                        text: trimmed,
-                        start: start.isFinite ? start : 0
-                    )))
-                } else {
-                    emit.yield(.volatile(speaker: speaker, text: text))
+            switch recognizer {
+            case .modern(let module):
+                for try await result in module.results {
+                    handle(text: result.text, range: result.range, isFinal: result.isFinal)
+                }
+            case .dictation(let module):
+                for try await result in module.results {
+                    handle(text: result.text, range: result.range, isFinal: result.isFinal)
                 }
             }
         } catch {
             // The analyzer finishing is the normal way this loop ends.
         }
+    }
+
+    private func handle(text attributed: AttributedString, range: CMTimeRange, isFinal: Bool) {
+        let text = String(attributed.characters)
+        guard isFinal else {
+            emit.yield(.volatile(speaker: speaker, text: text))
+            return
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let start = range.start.seconds
+        emit.yield(.line(Line(speaker: speaker, text: trimmed, start: start.isFinite ? start : 0)))
     }
 
     private func resample(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {

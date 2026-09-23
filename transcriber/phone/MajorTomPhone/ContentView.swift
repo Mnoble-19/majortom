@@ -73,6 +73,12 @@ struct TalkView: View {
                 case .ready:
                     Label("German model ready", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
+                    if let engine = session.engine {
+                        Text(engine == .speechTranscriber
+                             ? "Using the newer recogniser."
+                             : "Using system dictation — this device does not support the newer recogniser.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 case .unsupported(let why):
                     Label(why, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange).font(.callout)

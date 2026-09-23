@@ -1,6 +1,8 @@
 import AVFoundation
 import CallCore
 import Foundation
+import Network
+import Synchronization
 
 // Smoke test for the capture and recognizer end of the pipeline — no UI and no
 // database in the way. Audio comes from a file, the mic, or a tap on another
@@ -127,6 +129,84 @@ if arguments.first == "--serve" {
     print("listening on port \(server.port.map(String.init) ?? "?") as \(SyncProtocol.serviceType)")
     print("ctrl-c to stop")
     try await Task.sleep(for: .seconds(600))
+    exit(0)
+}
+
+if arguments.first == "--discover" {
+    // The phone's half of finding the Mac, run from the command line. Same
+    // NWBrowser the app uses, so a failure here is a real failure there.
+    let seconds = arguments.dropFirst().first.flatMap(Int.init) ?? 10
+    print("browsing for \(SyncProtocol.serviceType) for \(seconds)s…")
+
+    let parameters = NWParameters()
+    parameters.includePeerToPeer = true
+    let browser = NWBrowser(
+        for: .bonjour(type: SyncProtocol.serviceType, domain: nil), using: parameters)
+
+    let seen = Mutex<Set<String>>([])
+    browser.browseResultsChangedHandler = { results, _ in
+        for result in results {
+            guard case .service(let name, let type, let domain, _) = result.endpoint else { continue }
+            let line = "\(name)  [\(type)\(domain)]"
+            seen.withLock {
+                guard $0.insert(line).inserted else { return }
+                print("  found: \(line)")
+            }
+        }
+    }
+    browser.stateUpdateHandler = { state in
+        if case .failed(let error) = state { print("  browser failed: \(error)") }
+    }
+    browser.start(queue: .main)
+    try await Task.sleep(for: .seconds(seconds))
+    browser.cancel()
+    let count = seen.withLock { $0.count }
+    print(count == 0 ? "nothing found — is the listener running?" : "\(count) service(s)")
+    exit(0)
+}
+
+if arguments.first == "--sync" {
+    // The whole phone path end to end: find the Mac over Bonjour, then send to
+    // the endpoint that discovery returned rather than to a typed-in address.
+    print("finding the Mac…")
+    let parameters = NWParameters()
+    parameters.includePeerToPeer = true
+    let browser = NWBrowser(
+        for: .bonjour(type: SyncProtocol.serviceType, domain: nil), using: parameters)
+
+    let found = Mutex<NWEndpoint?>(nil)
+    browser.browseResultsChangedHandler = { results, _ in
+        guard let first = results.first else { return }
+        found.withLock { if $0 == nil { $0 = first.endpoint } }
+    }
+    browser.start(queue: .main)
+
+    var endpoint: NWEndpoint?
+    for _ in 0..<40 {
+        try await Task.sleep(for: .milliseconds(250))
+        endpoint = found.withLock { $0 }
+        if endpoint != nil { break }
+    }
+    browser.cancel()
+
+    guard let endpoint else {
+        print("no Mac found — is the listener running?")
+        exit(1)
+    }
+    print("found \(endpoint)")
+
+    let payload = SyncPayload(
+        sessionID: UUID().uuidString,
+        person: arguments.dropFirst().first ?? "Ana",
+        startedAt: Date(),
+        words: [
+            .init(text: "beharrlich",
+                  sentence: "Das war ziemlich beharrlich von ihm.", position: 12),
+            .init(text: "angezogen",
+                  sentence: "Die Preise haben in letzter Zeit deutlich angezogen.", position: 48)
+        ])
+    let result = try await SyncClient().send(payload, to: endpoint)
+    print("accepted: \(result.accepted)\(result.error.map { ", error: \($0)" } ?? "")")
     exit(0)
 }
 
