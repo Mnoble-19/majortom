@@ -11,6 +11,14 @@ public final class MicSource {
 
     public func start(_ sink: @escaping (AVAudioPCMBuffer, AVAudioTime) -> Void) throws {
         guard !running else { return }
+        #if os(iOS)
+        // Without this the engine gets a sample rate it cannot use, or no input
+        // at all. `.measurement` keeps iOS from applying its own processing to
+        // audio we are about to transcribe.
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.record, mode: .measurement, options: [.allowBluetooth])
+        try audioSession.setActive(true)
+        #endif
         let node = engine.inputNode
         let format = node.outputFormat(forBus: 0)
         node.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, time in

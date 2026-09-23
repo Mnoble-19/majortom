@@ -17,7 +17,9 @@ public final class Session: @unchecked Sendable {
 
     private var theirs: Transcriber?
     private var mine: Transcriber?
+    #if os(macOS)
     private var tap: ProcessTapSource?
+    #endif
     private var mic: MicSource?
     private var relays: [Task<Void, Never>] = []
 
@@ -70,6 +72,7 @@ public final class Session: @unchecked Sendable {
         sourceID = try database.upsertSource(
             title: title, person: person, sessionID: sessionID, origin: "mac", createdAt: startedAt)
 
+        #if os(macOS)
         let callProcesses: [AudioProcess]
         switch source {
         case .whicheverAppIsPlaying: callProcesses = AudioProcesses.likelyCall()
@@ -86,6 +89,7 @@ public final class Session: @unchecked Sendable {
             self.tap = tap
             relay(theirs)
         }
+        #endif
 
         let mine = Transcriber(locale: locale, speaker: .me)
         try await mine.start()
@@ -141,7 +145,9 @@ public final class Session: @unchecked Sendable {
     /// Stops capture and drops the transcript. Saved words are already in the
     /// database by this point; nothing here writes anything.
     public func end() async {
+        #if os(macOS)
         tap?.stop()
+        #endif
         mic?.stop()
         try? await theirs?.finish()
         try? await mine?.finish()
@@ -155,8 +161,10 @@ public final class Session: @unchecked Sendable {
         }
         theirs = nil
         mine = nil
-        tap = nil
         mic = nil
+        #if os(macOS)
+        tap = nil
+        #endif
     }
 
     static func title(person: String, at date: Date) -> String {

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "MajorTomCalls",
-    platforms: [.macOS("26.0")],
+    platforms: [.macOS("26.0"), .iOS("26.0")],
     targets: [
         .target(
             name: "CallCore",

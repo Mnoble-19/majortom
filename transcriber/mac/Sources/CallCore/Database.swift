@@ -20,7 +20,9 @@ public enum DatabaseError: Error, CustomStringConvertible {
 ///
 /// The desktop app owns the schema; everything here is additive. It polls for
 /// external writes every three seconds, so rows appear while it is running.
-public final class Database {
+/// Safe to share across threads: the handle is opened `SQLITE_OPEN_FULLMUTEX`,
+/// so SQLite serialises access to it internally.
+public final class Database: @unchecked Sendable {
     /// `MAJORTOM_DB` wins, then `data/` at the monorepo root, then a private
     /// copy. Finding the root by walking up means this works wherever the repo
     /// is checked out, and it is the same marker the desktop app looks for.

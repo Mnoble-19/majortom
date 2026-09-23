@@ -1,3 +1,4 @@
+#if os(macOS)
 import AVFoundation
 import AppKit
 import CoreAudio
@@ -258,3 +259,4 @@ public final class ProcessTapSource {
         return readString(deviceID, kAudioDevicePropertyDeviceUID)
     }
 }
+#endif

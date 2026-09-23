@@ -97,6 +97,60 @@ if arguments.first == "--db" {
     exit(0)
 }
 
+if arguments.first == "--serve" {
+    // The Mac end of the phone sync, on its own so the protocol can be tested
+    // before there is a phone to test it with.
+    guard ProcessInfo.processInfo.environment["MAJORTOM_DB"]?.isEmpty == false else {
+        print("set MAJORTOM_DB to somewhere scratch first")
+        exit(1)
+    }
+    let database = try Database()
+    print("writing to \(Database.defaultURL().path)")
+
+    var llm = LLMSettings.empty
+    llm.endpoint = ProcessInfo.processInfo.environment["MT_ENDPOINT"] ?? llm.endpoint
+    llm.model = (try? await ModelTranslator(settings: llm, apiKey: "").models().first) as? String ?? ""
+    print(llm.model.isEmpty
+        ? "no model reachable at \(llm.endpoint) — words will import untranslated"
+        : "translating with \(llm.model)")
+    let settings = llm
+
+    let server = SyncServer(
+        database: database,
+        translator: { Translator(settings: settings, apiKey: "") }
+    ) { report in
+        print("  ← \(report.person): \(report.words) word(s), source \(report.sourceID)")
+        print("    translating in the background…")
+    }
+    try server.start()
+    try await Task.sleep(for: .milliseconds(300))
+    print("listening on port \(server.port.map(String.init) ?? "?") as \(SyncProtocol.serviceType)")
+    print("ctrl-c to stop")
+    try await Task.sleep(for: .seconds(600))
+    exit(0)
+}
+
+if arguments.first == "--send" {
+    // Pretends to be the phone: one session, a few words, no translations.
+    let host = arguments.dropFirst().first ?? "127.0.0.1"
+    let payload = SyncPayload(
+        sessionID: UUID().uuidString,
+        person: arguments.dropFirst(2).first ?? "Ana",
+        startedAt: Date(),
+        words: [
+            .init(text: "beharrlich",
+                  sentence: "Das war ziemlich beharrlich von ihm.", position: 12),
+            .init(text: "angezogen",
+                  sentence: "Die Preise haben in letzter Zeit deutlich angezogen.", position: 48),
+            .init(text: "aufgegeben",
+                  sentence: "Er hat das Paket gestern bei der Post aufgegeben.", position: 95)
+        ])
+    print("sending \(payload.words.count) words to \(host)…")
+    let result = try await SyncClient().send(payload, to: host, port: SyncProtocol.defaultPort)
+    print("accepted: \(result.accepted)\(result.error.map { ", error: \($0)" } ?? "")")
+    exit(0)
+}
+
 if arguments.first == "--translate" {
     // Both providers against a real endpoint, timed, so the latency and the
     // quality difference are visible rather than assumed.
