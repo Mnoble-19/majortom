@@ -43,6 +43,10 @@ public final class Session: @unchecked Sendable {
         lock.withLock { lines }
     }
 
+    /// The `source` row this session writes to, so callers can update an item's
+    /// translation after the fact without re-deriving it.
+    public var databaseSourceID: Int64? { sourceID }
+
     public func volatileText(for speaker: Speaker) -> String {
         lock.withLock { volatileBySpeaker[speaker] ?? "" }
     }

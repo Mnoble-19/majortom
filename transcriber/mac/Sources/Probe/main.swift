@@ -97,6 +97,51 @@ if arguments.first == "--db" {
     exit(0)
 }
 
+if arguments.first == "--translate" {
+    // Both providers against a real endpoint, timed, so the latency and the
+    // quality difference are visible rather than assumed.
+    let endpoint = arguments.dropFirst().first ?? Settings.llm.endpoint
+    let word = arguments.dropFirst(2).first ?? "abbringen"
+    let sentence = arguments.dropFirst(3).first ?? "Sie hat sich nicht davon abbringen lassen."
+
+    let apple = AppleTranslator()
+    print("Apple translator installed for de→en: \(await apple.isAvailable())")
+    let appleStart = Date()
+    do {
+        let gloss = try await apple.gloss(word: word, sentence: sentence)
+        print(String(format: "  [%.2fs] %@ → %@", -appleStart.timeIntervalSinceNow,
+                     gloss.dictionaryForm, gloss.meaning))
+        print("         sentence: \(gloss.sentence)")
+    } catch {
+        print("  unavailable: \(error)")
+    }
+
+    var settings = Settings.llm
+    settings.endpoint = endpoint
+    let probe = ModelTranslator(settings: settings, apiKey: Settings.apiKey)
+    print("\nendpoint \(endpoint)")
+    let names = try await probe.models()
+    print("models: \(names.joined(separator: ", "))")
+    settings.model = names.first ?? ""
+
+    for skip in [false, true] {
+        settings.skipReasoning = skip
+        let translator = ModelTranslator(settings: settings, apiKey: Settings.apiKey)
+        let start = Date()
+        do {
+            let gloss = try await translator.gloss(word: word, sentence: sentence)
+            print(String(format: "\n%@ (%.1fs)", skip ? "reasoning off" : "reasoning on",
+                         -start.timeIntervalSinceNow))
+            print("  dictionary form: \(gloss.dictionaryForm)")
+            print("  meaning:         \(gloss.meaning)")
+            print("  sentence:        \(gloss.sentence)")
+        } catch {
+            print("\n\(skip ? "reasoning off" : "reasoning on") failed: \(error)")
+        }
+    }
+    exit(0)
+}
+
 if arguments.first == "--list" {
     let playing = AudioProcesses.playing()
     print(playing.isEmpty

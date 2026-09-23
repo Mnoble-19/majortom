@@ -39,13 +39,18 @@ deliberate trade.
 | Mic capture | works |
 | Other party's audio (process tap) | works |
 | Writing to the MajorTom database | works |
-| Two tracks running as one session | built, not yet run on a real call |
-| Click-to-translate, local LLM | not started |
-| The window you actually use | not started |
+| Two tracks running as one session | works |
+| Click-to-translate, local model | works |
+| The window | built, not yet used on a real call |
 | iOS app | not started |
 | Sync over local wifi | not started |
 
 ```bash
+./build.sh && open "build/MajorTom Calls.app"
+```
+
+```bash
+swift run Probe --translate        # both translators, timed
 swift run Probe --list             # what is playing, and everything tappable
 swift run Probe --tap 60           # whatever app is playing, for 60s
 swift run Probe --tap Signal 60    # a named app instead
@@ -57,6 +62,63 @@ swift run Probe --db               # database write path, no audio
 `MAJORTOM_DB` points at a different SQLite file — always use it when testing, so
 experiments do not land in the real library. Left unset, it resolves `data/` at
 the repo root, the same file the desktop app reads.
+
+## Translation
+
+Two providers, because they fail in opposite directions.
+
+**Apple's `Translation.framework`** is the floor: on-device, free, no server, and
+fast enough to feel instant. It is also context-blind — it translates a word
+without knowing how it was used, so `anziehen` is "to put on" whether the
+speaker meant a coat or prices rising. It needs its German language pack
+installed, which is a System Settings step; without it there is simply no fast
+first answer.
+
+**Any OpenAI-compatible endpoint** is the ceiling — LM Studio, llama.cpp,
+Unsloth, Ollama. One HTTP client, not one integration each. It gets the sense
+that was actually used, and the dictionary form worth filing.
+
+A click saves the word immediately with no translation, then both providers run
+in the background and fill it in. So a dead model, a cold model or no model at
+all costs you a translation and never the word. Nothing in this path touches the
+audio pipeline.
+
+### Field names beat prompts
+
+Under grammar-constrained decoding, what the JSON fields are *called* matters
+more than the instructions. Asking for `sentence` got the German echoed back
+untranslated and stray tokens leaked into `meaning`:
+
+```
+meaning:  to divert / to dissuade from something (in this context: ... ) own context: ...
+sentence: Sie hat sich nicht davon abbringen lassen.      ← not translated
+```
+
+Renaming them `english_meaning` and `english_sentence` fixed it outright, same
+model, same prompt:
+
+```
+english_meaning:  to divert / to deter
+english_sentence: She didn't let herself be diverted from it.
+```
+
+### Thinking is worth the wait
+
+Measured on Gemma 4 26B A4B via llama.cpp. Both modes get the *context* right —
+neither said "to put on clothes" for the price sense — but only the thinking one
+returns a form you would want in a vocabulary list:
+
+| word (context) | reasoning on | reasoning off |
+|---|---|---|
+| `angezogen` (prices rose) | to rise / to increase | risen / increased |
+| `aufgegeben` (posted a parcel) | to post | dropped off |
+| latency | 7–15s | 2s |
+
+So reasoning stays on by default. It runs in the background, so the latency is
+invisible; "dropped off" in your library is not. Settings has the toggle.
+
+A cold llama.cpp with `--sleep-idle-seconds` has to load the model before it
+answers anything, which took 24s here. Hence the 180s request timeout.
 
 ## Two things about SpeechTranscriber that cost a while
 
@@ -96,9 +158,16 @@ mac/
       MicSource.swift        your voice
       ProcessTapSource.swift their voice, tapped from the call app
       Session.swift          both tracks as one call; transcript stays in memory
+      Translator.swift       Apple translation + any OpenAI-compatible endpoint
+      Settings.swift         endpoint config; the API key lives in the keychain
       Database.swift         writes into the desktop app's SQLite file
-    MajorTomCalls/   the SwiftUI app (a stub so far)
+    MajorTomCalls/
+      MajorTomCallsApp.swift window + menu bar item
+      SessionModel.swift     bridges audio threads to the main actor
+      TranscriptView.swift   clickable words, saved-word list
+      SettingsView.swift     endpoint, model, and a Test that really translates
     Probe/           CLI smoke tests, no UI in the way
+  build.sh           assembles the .app — needed for the TCC prompts
 phone/               iOS app (not started)
 ```
 
