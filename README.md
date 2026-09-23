@@ -11,17 +11,23 @@ SQLite file, so everything ends up in one library.
 |---------|--------------|
 | [extension](extension) | Dual subtitles on any video site. Click a word to look it up and save it. |
 | [desktop](desktop) | Native macOS app holding everything you save — the library itself. |
-| [transcriber](transcriber) | Live transcription of a call. Click a word, get it translated and saved. |
+| [transcriber](transcriber) | Live transcription of a call on the Mac, and an iPhone app for the same thing in person. |
 | [site](site) | The public page for the project. |
-| [remarkable](remarkable) | Placeholder — nothing built yet. |
+| [remarkable](remarkable) | A KOReader plugin that saves words while reading on the tablet. |
 
 ## How they fit together
 
 ```
-extension ──┐
-transcriber ─┼──→  data/majortom.sqlite  ──→  desktop
-remarkable ──┘         (the library)          (reads and organises it)
+extension ─────┐
+transcriber ───┤
+  mac          ├──→  data/majortom.sqlite  ──→  desktop
+  phone ─(wifi)┤          (the library)         (reads and organises it)
+remarkable ────┘
 ```
+
+Only the Mac writes to the library. The iPhone sends what it collected over
+the local network, and the reMarkable's file is pulled over USB — neither
+touches the database itself.
 
 `data/` sits at the root because no single project owns it. Two tables — sources
 are what you saved *from* (a show, a call, a book), items are what you saved. The
