@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>MajorTom</string>
+    <key>CFBundleDisplayName</key>
+    <string>MajorTom</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>UILaunchScreen</key>
+    <dict/>
+
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Conversations are transcribed on this iPhone so you can tap a German word and keep it with the sentence it came from. Audio never leaves the device and the recording is not saved.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>German speech is transcribed using the on-device model. Nothing is sent to a server.</string>
+
+    <!-- Without both of these, Bonjour browsing silently finds nothing on iOS:
+         the permission string, and every service type declared up front. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Used to find your Mac on the same network so saved words can be sent to your library. Nothing is sent over the internet.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_majortom._tcp</string>
+    </array>
+</dict>
+</plist>

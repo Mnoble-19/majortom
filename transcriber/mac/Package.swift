@@ -4,6 +4,10 @@ import PackageDescription
 let package = Package(
     name: "MajorTomCalls",
     platforms: [.macOS("26.0"), .iOS("26.0")],
+    products: [
+        // Exposed so the iOS app's Xcode project can depend on this package.
+        .library(name: "CallCore", targets: ["CallCore"])
+    ],
     targets: [
         .target(
             name: "CallCore",

@@ -1,3 +1,6 @@
+// Writes to the database and taps another app, both of which are the Mac's
+// job. The phone runs its own, much smaller session.
+#if os(macOS)
 import AVFoundation
 import Foundation
 
@@ -172,3 +175,4 @@ public final class Session: @unchecked Sendable {
         return "Call with \(person) — \(day)"
     }
 }
+#endif

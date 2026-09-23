@@ -1,3 +1,6 @@
+// The library lives on the Mac. The phone sends words there rather than
+// keeping its own copy, so none of this is built for iOS.
+#if os(macOS)
 import Foundation
 import SQLite3
 
@@ -259,3 +262,4 @@ public enum ISO8601 {
 
     public static func string(_ d: Date = Date()) -> String { withFraction.string(from: d) }
 }
+#endif

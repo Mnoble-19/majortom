@@ -71,6 +71,7 @@ public enum SyncProtocol {
     }()
 }
 
+#if os(macOS)
 /// Writes a synced session into the library. Words arrive untranslated and are
 /// filled in afterwards, one at a time, so a slow model does not hold the phone
 /// waiting on a reply.
@@ -122,7 +123,6 @@ public struct SyncImporter: Sendable {
     }
 }
 
-#if os(macOS)
 /// Listens on the local network for the phone. Advertised over Bonjour so the
 /// phone finds it without anyone typing an address, which is the whole point —
 /// and it is a peer-to-peer link rather than an internet one, so a VPN on
