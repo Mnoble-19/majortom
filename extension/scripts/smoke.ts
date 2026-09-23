@@ -7,9 +7,9 @@
  *
  * TTML/EBU-TT parsing needs a DOM and is only exercised in the browser.
  */
-import {cueIndexAt, detectFormat, parse} from '../extension/src/capture/parsers';
-import {groupSentences} from '../extension/src/translate';
-import {parseYtPayload, pickArdSubtitleUrl} from '../extension/src/capture/adapters';
+import {cueIndexAt, detectFormat, parse} from '../src/capture/parsers';
+import {groupSentences} from '../src/translate';
+import {parseYtPayload, pickArdSubtitleUrl} from '../src/capture/adapters';
 
 let failures = 0;
 

@@ -16,23 +16,23 @@ Builds the extension and the app, puts `MajorTom.app` in `/Applications` and
 opens it. After that it is a normal Dock app — no terminal.
 
 The only remaining step is per browser: `chrome://extensions` → Developer mode
-→ **Load unpacked** → this repo's `dist/extension` folder.
+→ **Load unpacked** → this repo's `extension/dist/unpacked` folder.
 
 You never pass an extension ID. Chromium derives an unpacked extension's ID by
 hashing the absolute path of its folder, so the app computes the same ID from
-`<repo>/dist/extension` and registers itself as that extension's native
+`<repo>/extension/dist/unpacked` and registers itself as that extension's native
 messaging host on every launch — into Chrome, Brave, Chromium, Edge, Vivaldi
 and Arc, all pointing at the one binary and therefore the one database.
 
 Because the ID is path-derived, loading the extension from anywhere other than
-`<repo>/dist/extension` will not match. `install-host.sh <id>...` is the manual
+`<repo>/extension/dist/unpacked` will not match. `install-host.sh <id>...` is the manual
 escape hatch for that case.
 
 `./build.sh` alone rebuilds into `build/` without touching `/Applications`.
 
 The app's own location does not matter, but the repo's does: `build.sh` bakes
 the repo path into `Info.plist` as `MTRepoRoot`, which is how the app in
-`/Applications` still finds `data/` and `dist/extension`. Move the repo and you
+`/Applications` still finds `data/` and the unpacked extension. Move the repo and you
 must re-run `install.sh`.
 
 ## Where the data lives
@@ -42,7 +42,7 @@ must re-run `install.sh`.
 ```
 
 Resolved from `MTRepoRoot` in the bundle's `Info.plist`, falling back to walking
-up from the binary to the folder containing `package.json`, and finally to
+up from the binary to the folder containing `extension/package.json`, and finally to
 `~/Library/Application Support/MajorTom/`. Set `MAJORTOM_DB=/path/to.sqlite` to
 override — useful for tests, and it applies to both the app and the host.
 

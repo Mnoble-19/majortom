@@ -1,5 +1,5 @@
 node_modules/
-dist/
+extension/dist/
 .DS_Store
 .idea/
 majortom.log

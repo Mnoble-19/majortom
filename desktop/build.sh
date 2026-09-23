@@ -19,7 +19,7 @@ cp "$BIN" "$APP/Contents/MacOS/MajorTom"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp Info.plist "$APP/Contents/Info.plist"
 
-# Baked in so the app still finds data/ and dist/extension from /Applications.
+# Baked in so the app still finds data/ and the unpacked extension from /Applications.
 /usr/libexec/PlistBuddy -c "Add :MTRepoRoot string $REPO" "$APP/Contents/Info.plist" >/dev/null
 
 codesign --force --sign - "$APP" >/dev/null 2>&1 || true

@@ -1,4 +1,4 @@
-# MajorTom
+# MajorTom — browser extension
 
 Dual subtitles and click-to-save vocabulary for language learning — on any video
 site, not a hardcoded list of three.
@@ -10,6 +10,7 @@ sentence it came from.
 ## Install
 
 ```bash
+cd extension
 npm install && npm run build
 ```
 
@@ -17,7 +18,7 @@ Then in Chrome (or Brave — same steps):
 
 1. Open `chrome://extensions`
 2. Turn on **Developer mode** (top right)
-3. **Load unpacked** → select the `dist/extension` folder
+3. **Load unpacked** → select the `extension/dist/unpacked` folder
 
 Re-run `npm run build` after changing anything, then hit reload on the extension
 card. `npm run dev` rebuilds on save.
@@ -82,25 +83,27 @@ the original advances through it.
 ## Layout
 
 ```
-extension/
-  manifest.json
-  src/
-    content.ts              orchestrator: discovery, sync loop, keyboard
-    background.ts           service worker: fetch proxy + translation router
-    capture/
-      injected.ts           MAIN world: text-track + network hooks
-      parsers.ts            VTT / TTML / SRT / json3 → Cue[]
-      adapters/             one file per site; register in index.ts
-    translate/
-      index.ts              sentence regrouping, caching, orchestration
-      deepl.ts              provider (a local-model provider goes beside it)
-    ui/
-      overlay.ts            the on-video overlay (shadow DOM)
-      popup.ts / popup.html
-    shared/                 types, config, logger, storage, messaging
+manifest.json
+src/
+  content.ts                orchestrator: discovery, sync loop, keyboard
+  background.ts             service worker: fetch proxy + translation router
+  capture/
+    injected.ts             MAIN world: text-track + network hooks
+    parsers.ts              VTT / TTML / SRT / json3 → Cue[]
+    adapters/               one file per site; register in index.ts
+  translate/
+    index.ts                sentence regrouping, caching, orchestration
+    deepl.ts                provider (a local-model provider goes beside it)
+  ui/
+    overlay.ts              the on-video overlay (shadow DOM)
+    popup.ts / popup.html
+  shared/                   types, config, logger, storage, messaging
 scripts/                    icons, smoke tests, dev log server
-desktop/                    macOS app the saved words sync into — see desktop/README.md
+dist/unpacked/              the built extension — this is what you load
 ```
+
+The saved words sync into the [desktop app](../desktop); the
+[transcriber](../transcriber) is the same idea for calls.
 
 Adding a site means writing one file in `capture/adapters/` and listing it in
 that folder's `index.ts`. Nothing else needs to change.

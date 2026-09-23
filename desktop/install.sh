@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "› building extension"
-(cd .. && npm run build >/dev/null)
+(cd ../extension && npm run build >/dev/null)
 
 echo "› building app"
 ./build.sh release >/dev/null
@@ -25,7 +25,7 @@ Done. MajorTom is in /Applications — drag it to your Dock.
 
 Remaining one-time step, in each browser you use:
   1. chrome://extensions → Developer mode
-  2. Load unpacked → pick this repo's dist/extension folder
+  2. Load unpacked → pick this repo's extension/dist/unpacked folder
 
 The app has already registered itself as that extension's sync host, so
 saving a word will just work.

@@ -7,7 +7,7 @@
 import {deflateSync} from 'zlib';
 import {mkdirSync, writeFileSync} from 'fs';
 
-const OUT = 'extension/icons';
+const OUT = 'icons';
 
 const BG = [0x14, 0x16, 0x1e];
 const PRIMARY = [0xff, 0xff, 0xff];

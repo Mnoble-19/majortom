@@ -1,15 +1,20 @@
 import Foundation
 
-/// Where the project lives. `build.sh` bakes the repo root into Info.plist so
-/// the app still finds `data/` and `dist/extension` after being copied to
+/// Where the monorepo lives. `build.sh` bakes the root into Info.plist so the
+/// app still finds `data/` and the unpacked extension after being copied to
 /// /Applications, where walking up from the binary would find nothing.
 enum AppPaths {
+    /// What identifies the repo root. Each project owns its own `package.json`
+    /// now, so the marker has to be one of those rather than a bare filename
+    /// that any subfolder could match.
+    private static let marker = "extension/package.json"
+
     static let repoRoot: URL? = {
         let fm = FileManager.default
 
         if let baked = Bundle.main.object(forInfoDictionaryKey: "MTRepoRoot") as? String,
            !baked.isEmpty,
-           fm.fileExists(atPath: (baked as NSString).appendingPathComponent("package.json")) {
+           fm.fileExists(atPath: (baked as NSString).appendingPathComponent(marker)) {
             return URL(fileURLWithPath: baked)
         }
 
@@ -17,7 +22,7 @@ enum AppPaths {
             .resolvingSymlinksInPath()
             .deletingLastPathComponent()
         while dir.path != "/" {
-            if fm.fileExists(atPath: dir.appendingPathComponent("package.json").path) {
+            if fm.fileExists(atPath: dir.appendingPathComponent(marker).path) {
                 return dir
             }
             dir = dir.deletingLastPathComponent()
@@ -28,7 +33,7 @@ enum AppPaths {
     /// The unpacked extension folder, whose absolute path determines the
     /// extension id the browsers will give it.
     static var unpackedExtension: URL? {
-        repoRoot?.appendingPathComponent("dist/extension", isDirectory: true)
+        repoRoot?.appendingPathComponent("extension/dist/unpacked", isDirectory: true)
     }
 
     static var dataDirectory: URL {
