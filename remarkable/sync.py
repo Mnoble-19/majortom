@@ -27,6 +27,12 @@ REMOTE_FILE = "/home/root/.majortom/vocab.jsonl"
 CONNECT_TIMEOUT = 8
 
 
+def log(message: str, error: bool = False) -> None:
+    """Timestamped, because the agent's output is only useful after the fact."""
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"{stamp}  {message}", file=sys.stderr if error else sys.stdout, flush=True)
+
+
 def db_path() -> Path:
     override = os.environ.get("MAJORTOM_DB")
     if override:
@@ -63,7 +69,7 @@ def fetch() -> list[dict]:
         except json.JSONDecodeError:
             # A half-written last line is the one failure mode of an append-only
             # log. Skip it; the next save rewrites a complete line after it.
-            print(f"  skipped malformed line {line_no}", file=sys.stderr)
+            log(f"skipped malformed line {line_no}", error=True)
     return entries
 
 
@@ -129,14 +135,14 @@ def main() -> int:
         # The agent runs on a timer and the tablet is usually absent, so this
         # must stay silent or the log fills with it.
         if args.dry_run:
-            print("majortom: tablet not plugged in")
+            log("tablet not plugged in")
         return 0
     except ConnectionError as err:
-        print(f"majortom: {err}", file=sys.stderr)
+        log(str(err), error=True)
         return 1
 
     if not entries:
-        print("majortom: nothing saved on the tablet yet")
+        log("connected; nothing saved on the tablet yet")
         return 0
 
     if args.dry_run:
@@ -149,8 +155,7 @@ def main() -> int:
 
     path = db_path()
     if not path.exists():
-        print(f"majortom: no library at {path} — run the desktop app once first",
-              file=sys.stderr)
+        log(f"no library at {path} — run the desktop app once first", error=True)
         return 1
 
     conn = sqlite3.connect(path, timeout=5.0)
@@ -160,7 +165,7 @@ def main() -> int:
     finally:
         conn.close()
 
-    print(f"majortom: imported {written} entries across {books} book(s)")
+    log(f"imported {written} entries across {books} book(s)")
     return 0
 
 
