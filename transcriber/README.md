@@ -31,6 +31,17 @@ words you noticed, not in a wall of text you will never reread.
 The cost is that review has to happen live, during the session. That is a
 deliberate trade.
 
+What is kept, all of it:
+
+- each word or phrase you click, with the sentence around it — cut to at most
+  ten words either side, since the recognizer often leaves out the punctuation
+  that would end a sentence;
+- the other person's name and the date, to group the words by conversation;
+- on the phone, the same, in a small file until it is sent to the Mac.
+
+Nothing else is written: no transcript, no audio, no logs. The translation
+model is sent only the word and that one sentence.
+
 ## State
 
 | Piece | Status |
