@@ -92,6 +92,8 @@ final class Database {
             ("removed_at", "TEXT"),
             ("review_streak", "INTEGER NOT NULL DEFAULT 0"),
             ("review_due", "TEXT"),
+            // German alternatives from the model, one per line.
+            ("alternatives", "TEXT NOT NULL DEFAULT ''"),
         ]
         for (column, definition) in added where !columnExists("item", column) {
             try exec("ALTER TABLE item ADD COLUMN \(column) \(definition);")
