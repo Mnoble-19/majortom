@@ -1,0 +1,264 @@
+; MajorTom for the native reMarkable reader (xochitl).
+;
+; Adds Translate and Save to the menu that appears when text in a book is
+; picked with the selection tool. That menu is reMarkable's own, shipped behind
+; the `[Experimental] GlyphSelection` flag; today it offers only Copy.
+;
+; Everything lives in this one file on purpose. The Save handler needs the open
+; document and page, which belong to the reader view further up the tree; rather
+; than patch that much larger file too, it walks up the parent chain at runtime.
+; One patched file is one place to break when reMarkable ships an update.
+;
+; Files are written with XMLHttpRequest, which XOVI's service override already
+; allows (QML_XHR_ALLOW_FILE_WRITE=1).
+
+AFFECT /qml/device/view/documentview/GlyphSelectionHandler.qml
+    TRAVERSE GlyphSelection#root
+        LOCATE AFTER ALL
+        INSERT {
+            // "" until translated. mtFailed distinguishes "no translation yet"
+            // from "tried and could not reach the translator".
+            property string mtTranslation: ""
+            property bool mtBusy: false
+            property bool mtFailed: false
+            readonly property bool mtTranslated: mtTranslation !== "" || mtFailed
+
+            on_SelectedTextChanged: {
+                root.mtTranslation = "";
+                root.mtBusy = false;
+                root.mtFailed = false;
+            }
+
+            // Text from a laid-out page carries its line breaks, including
+            // words hyphenated across lines ("unruhi-\ngen").
+            function mtCleanText() {
+                return root.selectedText
+                    .replace(/­/g, "")
+                    .replace(/-\s*\n\s*/g, "")
+                    .replace(/\s+/g, " ")
+                    .trim();
+            }
+
+            // The reader view owns the document and page; the document view
+            // above it owns the notification bar.
+            function mtFindUp(test) {
+                let p = root.parent;
+                while (p && !test(p)) {
+                    p = p.parent;
+                }
+                return p;
+            }
+
+            function mtTranslate() {
+                const text = root.mtCleanText();
+                if (!text || root.mtBusy) {
+                    return;
+                }
+                root.mtBusy = true;
+                const xhr = new XMLHttpRequest();
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState !== XMLHttpRequest.DONE) {
+                        return;
+                    }
+                    root.mtBusy = false;
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        root.mtTranslation = data[0].map(part => part[0]).join("").trim();
+                        root.mtFailed = root.mtTranslation === "";
+                    } catch (e) {
+                        root.mtFailed = true;
+                    }
+                };
+                xhr.open("GET", "https://translate.googleapis.com/translate_a/single"
+                         + "?client=gtx&sl=auto&tl=en&dt=t&q=" + encodeURIComponent(text));
+                xhr.send();
+            }
+
+            function mtSave(kind) {
+                const scene = root.mtFindUp(p => p.document !== undefined && p.page !== undefined);
+                // Resolved now, not in the write callback: closing the menu
+                // destroys this object, and the write finishes after that.
+                const view = root.mtFindUp(p => typeof p.showNotification === "function");
+                const doc = scene ? scene.document : null;
+                const entry = {
+                    kind: kind,
+                    text: root.mtCleanText(),
+                    translation: root.mtTranslation,
+                    context: "",
+                    page: scene ? scene.page + 1 : 0,
+                    book: doc ? doc.visibleName : "",
+                    // A QUuid, which JSON.stringify renders as {}.
+                    document_id: doc ? String(doc.id).replace(/[{}]/g, "") : "",
+                    source: "xochitl",
+                    saved_at: new Date().toISOString()
+                };
+
+                // One file per save: nothing is ever read back and rewritten,
+                // so a failed write can lose that save and nothing else.
+                const path = "/home/root/.majortom/inbox/" + Date.now() + ".json";
+                const xhr = new XMLHttpRequest();
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === XMLHttpRequest.DONE && view) {
+                        view.showNotification(entry.text.length > 40
+                                              ? qsTr("Saved to MajorTom")
+                                              : qsTr("Saved: ") + entry.text);
+                    }
+                };
+                xhr.open("PUT", "file://" + path);
+                xhr.send(JSON.stringify(entry));
+                root.close();
+            }
+
+            Rectangle {
+                id: mtPanel
+                visible: selectionMenu.visible && (root.mtTranslated || root.mtBusy)
+                width: Math.min(Math.max(selectionMenu.width, 480), root.width - 80)
+                height: mtPanelText.implicitHeight + 40
+                x: Math.max(40, Math.min(selectionMenu.x, root.width - width - 40))
+                // Below the menu when there is room, otherwise above it.
+                y: selectionMenu.y + selectionMenu.height + 16 + height < root.height
+                   ? selectionMenu.y + selectionMenu.height + 16
+                   : selectionMenu.y - height - 16
+                color: "white"
+                border.color: "black"
+                border.width: 3
+                radius: 16
+
+                // The handler closes itself on any tap outside the menu; taps
+                // on the panel should not count as outside.
+                MouseArea {
+                    anchors.fill: parent
+                }
+
+                Text {
+                    id: mtPanelText
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    wrapMode: Text.Wrap
+                    color: "black"
+                    font.pixelSize: 30
+                    text: root.mtBusy ? qsTr("Translating…")
+                        : root.mtFailed ? qsTr("Could not translate — no connection? You can still save it.")
+                        : root.mtTranslation
+                }
+            }
+        }
+
+        TRAVERSE SelectionContextualMenu#selectionMenu
+            LOCATE AFTER ALL
+            INSERT {
+                ArkControls.ContextualMenu.Button {
+                    focusPolicy: Qt.NoFocus
+                    type: selectionMenu.type
+                    iconSource: "qrc:/ark/icons/language"
+                    text: root.mtBusy ? qsTr("…") : qsTr("Translate")
+                    visible: !root.mtTranslated
+                    onClicked: root.mtTranslate()
+                }
+
+                ArkControls.ContextualMenu.Button {
+                    focusPolicy: Qt.NoFocus
+                    type: selectionMenu.type
+                    iconSource: "qrc:/ark/icons/star"
+                    text: qsTr("Save word")
+                    visible: root.mtTranslated
+                    onClicked: root.mtSave("word")
+                }
+
+                ArkControls.ContextualMenu.Button {
+                    focusPolicy: Qt.NoFocus
+                    type: selectionMenu.type
+                    iconSource: "qrc:/ark/icons/star_fill"
+                    text: qsTr("Save phrase")
+                    visible: root.mtTranslated
+                    onClicked: root.mtSave("phrase")
+                }
+            }
+        END TRAVERSE
+    END TRAVERSE
+END AFFECT
+
+; Opening the same menu from the highlighter.
+;
+; The highlighter's stroke goes to highlightWithLine, which draws the highlight
+; and hands no text back. The selection tool's goes to selectWithLine, which
+; reports the glyphs under it -- that is what fills the menu above. So after a
+; highlight snapped to text, run the selection lookup on the same stroke and
+; open the menu with what it finds.
+;
+; Only listeners are added; no function reMarkable wrote is replaced. Their own
+; onAreaSelected still runs and, seeing the highlighter rather than the
+; selection tool, closes any glyph selection -- so the menu is reopened with
+; Qt.callLater, after every handler for the event has had its turn.
+
+AFFECT /qml/device/view/documentview/DeviceSceneView.qml
+    TRAVERSE FocusScope#root
+        LOCATE AFTER ALL
+        INSERT {
+            property bool mtFromHighlight: false
+            property var mtAreas: null
+            property string mtText: ""
+
+            function mtOpenFromHighlight() {
+                if (!root.mtFromHighlight) {
+                    return;
+                }
+                root.mtFromHighlight = false;
+                mtHighlightTimeout.stop();
+                if (!root.mtText) {
+                    return;
+                }
+                glyphSelectionRoot.active = true;
+                root.glyphSelection.setSelection(root.mtAreas, root.mtText);
+                root.glyphSelection.open();
+                root.mtText = "";
+                root.mtAreas = null;
+            }
+
+            // If the lookup finds no text -- a highlight over an image, say --
+            // no signal arrives, and the flag must not leak into the next
+            // ordinary selection.
+            Timer {
+                id: mtHighlightTimeout
+                interval: 1500
+                onTriggered: {
+                    root.mtFromHighlight = false;
+                    root.mtText = "";
+                    root.mtAreas = null;
+                }
+            }
+
+            Connections {
+                target: strokeHandler
+                function onStrokeCompleted(stroke) {
+                    if (!stroke.isHighlighter
+                        || !documentViewTools.activePen.snapHighlighterToText
+                        || !Experimental.glyphSelection.enabled
+                        || !root.controller) {
+                        return;
+                    }
+                    root.mtFromHighlight = true;
+                    mtHighlightTimeout.restart();
+                    root.controller.selectWithLine(stroke, SceneController.IgnoreTapGesture);
+                }
+            }
+
+            Connections {
+                target: root.controller
+                function onGlyphsSelected(areas, text) {
+                    if (!root.mtFromHighlight) {
+                        return;
+                    }
+                    root.mtAreas = areas;
+                    root.mtText = text;
+                    Qt.callLater(root.mtOpenFromHighlight);
+                }
+                function onAreaSelected(layer, sceneRect) {
+                    if (root.mtFromHighlight && root.mtText) {
+                        Qt.callLater(root.mtOpenFromHighlight);
+                    }
+                }
+            }
+        }
+    END TRAVERSE
+END AFFECT
