@@ -106,7 +106,7 @@ struct RootView: View {
                     message: "Keywords from practice calls will collect here once transcription is wired up."
                 )
             case .book:
-                BooksView(onOpenBook: { path.append(.source($0)) })
+                BooksView(onOpenBook: { path.append(.source($0)) }, store: store)
             }
         }
     }
