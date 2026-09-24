@@ -22,8 +22,13 @@ Then, with the tablet plugged in over USB:
 ./install.sh
 ```
 
-That copies the plugin onto the tablet and checks it parses there. Restart
-KOReader afterwards to pick the plugin up.
+That copies the plugin onto the tablet, checks it parses there, and fetches
+the offline dictionary if it is missing. Restart KOReader afterwards to pick
+the plugin up.
+
+Run it again after installing or updating KOReader, which replaces the folder
+both the plugin and the dictionary live in. Your saved words are not in that
+folder and are never touched.
 
 First time on a new Mac, set up a key so nothing prompts for a password:
 
@@ -100,7 +105,7 @@ majortom.koplugin/
   _meta.lua            name and description KOReader shows in the plugin list
   main.lua             the two buttons, the translate-then-confirm flow, the log
 sync.py                pull the log, import it, idempotently
-install.sh             push the plugin to a plugged-in tablet
+install.sh             push the plugin and the dictionary to a plugged-in tablet
 ```
 
 ## Known gaps
