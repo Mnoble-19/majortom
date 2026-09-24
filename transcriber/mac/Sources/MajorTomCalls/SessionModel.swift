@@ -114,8 +114,8 @@ final class SessionModel {
         let word = newWord.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !word.isEmpty, word != saved[index].word else { return }
 
-        saved[index].word = word
         let line = Line(speaker: .them, text: saved[index].sentence, start: saved[index].position)
-        try? session.save(word: word, from: line)
+        try? session.correct(saved[index].word, to: word, from: line)
+        saved[index].word = word
     }
 }

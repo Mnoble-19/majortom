@@ -184,6 +184,10 @@ public final class Database: @unchecked Sendable {
         )
     }
 
+    public func deleteItem(sourceID: Int64, text: String) throws {
+        try run("DELETE FROM item WHERE source_id = ? AND text = ?;", [sourceID, text])
+    }
+
     /// Everything still waiting for a translation, across every source. Words
     /// saved on the phone arrive untranslated and the model is often not
     /// running when they land, so the backlog has to be drainable later rather
