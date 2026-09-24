@@ -14,10 +14,13 @@ export async function getSettings(): Promise<Settings> {
     return {...DEFAULT_SETTINGS, ...(r[SETTINGS_KEY] || {})};
 }
 
+/** Stores only what the user has changed, so a better default reaches every
+ *  setting they never touched instead of being frozen by the first save. */
 export async function setSettings(patch: Partial<Settings>): Promise<Settings> {
-    const next = {...(await getSettings()), ...patch};
-    await chrome.storage.local.set({[SETTINGS_KEY]: next});
-    return next;
+    const r = await chrome.storage.local.get(SETTINGS_KEY);
+    const changed = {...(r[SETTINGS_KEY] || {}), ...patch};
+    await chrome.storage.local.set({[SETTINGS_KEY]: changed});
+    return {...DEFAULT_SETTINGS, ...changed};
 }
 
 export function onSettingsChanged(fn: (s: Settings) => void): void {
