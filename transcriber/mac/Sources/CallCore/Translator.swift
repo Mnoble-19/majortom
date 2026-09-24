@@ -24,6 +24,7 @@ public enum TranslatorError: Error, CustomStringConvertible {
     case badEndpoint(String)
     case http(Int, String)
     case emptyReply
+    case implausible(String)
     case languagePackMissing
 
     public var description: String {
@@ -33,6 +34,7 @@ public enum TranslatorError: Error, CustomStringConvertible {
         case .http(let code, let body):
             return "the endpoint answered \(code)\(body.isEmpty ? "" : " — \(body)")"
         case .emptyReply: return "the model returned nothing"
+        case .implausible(let why): return "the model's answer was rejected — \(why)"
         case .languagePackMissing:
             return "macOS has no German→English translation installed"
         }
@@ -88,12 +90,24 @@ public struct ModelTranslator: Sendable {
     /// `context` is the utterances either side, which is what lets the model
     /// tell one sense of a word from another.
     public func gloss(word: String, sentence: String, context: [String] = []) async throws -> Gloss {
-        let payload = try request(word: word, sentence: sentence, context: context)
+        do {
+            return try await ask(word: word, sentence: sentence, context: context, schema: true)
+        } catch TranslatorError.http(let code, let body) where Self.rejectedTheSchema(code, body) {
+            // Not every OpenAI-compatible server implements `response_format`
+            // with a JSON schema — Ollama takes a plain `json` mode, some older
+            // llama.cpp builds take nothing. Ask again without it and lean on
+            // the prompt plus the brace extraction below.
+            return try await ask(word: word, sentence: sentence, context: context, schema: false)
+        }
+    }
+
+    private func ask(word: String, sentence: String, context: [String], schema: Bool) async throws -> Gloss {
+        let payload = try request(word: word, sentence: sentence, context: context, schema: schema)
         let (data, response) = try await URLSession.shared.data(for: payload)
 
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw TranslatorError.http(http.statusCode, String(body.prefix(200)))
+            throw TranslatorError.http(http.statusCode, String(body.prefix(300)))
         }
 
         let reply = try JSONDecoder().decode(ChatResponse.self, from: data)
@@ -108,12 +122,50 @@ public struct ModelTranslator: Sendable {
             : (message.reasoning_content ?? "")
         guard let decoded = Answer.extract(from: text) else { throw TranslatorError.emptyReply }
 
+        return try validated(decoded, word: word, sentence: sentence)
+    }
+
+    /// Nothing reaches the library unchecked. A model that answers in the wrong
+    /// language, or with nothing at all, would otherwise write a blank or a
+    /// German "translation" over a word and look like it had worked.
+    private func validated(_ answer: Answer, word: String, sentence: String) throws -> Gloss {
+        func tidy(_ value: String) -> String {
+            value.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\n", with: " ")
+        }
+
+        let meaning = tidy(answer.english_meaning)
+        var english = tidy(answer.english_sentence)
+        let form = tidy(answer.dictionary_form)
+
+        guard !meaning.isEmpty else { throw TranslatorError.emptyReply }
+        // A gloss is a few words. A paragraph means the model ignored the
+        // instruction, and storing it would wreck the review screen.
+        guard meaning.count <= Self.maxMeaning else {
+            throw TranslatorError.implausible("the gloss came back \(meaning.count) characters long")
+        }
+        // The exact German back again is the failure mode that renaming the
+        // fields fixed; catch it in case another model does it too.
+        if english.compare(sentence, options: .caseInsensitive) == .orderedSame {
+            english = ""
+        }
+
         return Gloss(
-            dictionaryForm: decoded.dictionary_form.isEmpty ? word : decoded.dictionary_form,
-            meaning: decoded.english_meaning,
-            sentence: decoded.english_sentence,
+            dictionaryForm: form.isEmpty ? word : form,
+            meaning: meaning,
+            sentence: english,
             origin: .model
         )
+    }
+
+    private static let maxMeaning = 300
+
+    private static func rejectedTheSchema(_ code: Int, _ body: String) -> Bool {
+        guard (400..<500).contains(code) else { return false }
+        let lowered = body.lowercased()
+        return lowered.contains("response_format")
+            || lowered.contains("json_schema")
+            || lowered.contains("schema")
     }
 
     /// Round-trips the endpoint the way the Test button needs: reachable, model
@@ -140,7 +192,7 @@ public struct ModelTranslator: Sendable {
         return try JSONDecoder().decode(ModelList.self, from: data).data.map(\.id)
     }
 
-    private func request(word: String, sentence: String, context: [String]) throws -> URLRequest {
+    private func request(word: String, sentence: String, context: [String], schema: Bool) throws -> URLRequest {
         guard !settings.endpoint.isEmpty, let base = URL(string: settings.endpoint) else {
             throw TranslatorError.badEndpoint(settings.endpoint)
         }
@@ -155,9 +207,11 @@ public struct ModelTranslator: Sendable {
                 ["role": "system", "content": Self.systemPrompt],
                 ["role": "user", "content": Self.userPrompt(word: word, sentence: sentence, context: context)]
             ],
+        ]
+        if schema {
             // Constrained decoding, so the reply is always parseable instead of
             // prose wrapped around JSON.
-            "response_format": [
+            body["response_format"] = [
                 "type": "json_schema",
                 "json_schema": [
                     "name": "gloss",
@@ -174,7 +228,7 @@ public struct ModelTranslator: Sendable {
                     ]
                 ]
             ]
-        ]
+        }
         if settings.skipReasoning { body["reasoning_effort"] = "none" }
 
         var request = URLRequest(url: base.appending(path: "chat/completions"))
