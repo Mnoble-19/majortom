@@ -30,6 +30,19 @@ final class PhoneSession {
     private var mic: MicSource?
     private var pump: Task<Void, Never>?
 
+    /// People you have talked to, newest first — names only — so the next
+    /// conversation with them is a tap, and the Mac files it with the last.
+    static var recentPeople: [String] {
+        UserDefaults.standard.stringArray(forKey: "recentPeople") ?? []
+    }
+
+    private static func remember(_ person: String) {
+        let name = person.trimmingCharacters(in: .whitespacesAndNewlines)
+        var people = recentPeople.filter { $0.caseInsensitiveCompare(name) != .orderedSame }
+        people.insert(name, at: 0)
+        UserDefaults.standard.set(Array(people.prefix(8)), forKey: "recentPeople")
+    }
+
     enum ModelState: Equatable {
         case unknown
         case downloading
@@ -66,6 +79,7 @@ final class PhoneSession {
 
         sessionID = UUID().uuidString
         startedAt = Date()
+        Self.remember(person)
         lines = []
         volatile = ""
 

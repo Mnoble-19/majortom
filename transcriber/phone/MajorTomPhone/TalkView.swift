@@ -26,14 +26,10 @@ private struct SetupView: View {
     let pending: PendingWords
     @FocusState private var nameFocused: Bool
 
-    /// People already waiting to sync, so a second chat with the same person
-    /// is one tap away.
+    /// People you have talked to before, so the next chat with them is a tap.
     private var recentPeople: [String] {
-        var seen = Set<String>()
-        return pending.sessions.reversed()
-            .filter { $0.id != PendingWords.ownSessionID }
-            .map(\.person)
-            .filter { seen.insert($0).inserted }
+        let typed = session.person.trimmingCharacters(in: .whitespaces)
+        return PhoneSession.recentPeople.filter { $0.caseInsensitiveCompare(typed) != .orderedSame }
     }
 
     var body: some View {
