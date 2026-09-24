@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Pull saved vocabulary off the reMarkable and into the MajorTom library.
 
-The tablet appends one JSON object per line and never rewrites the file, so
-this replays the whole log every time. Both UNIQUE constraints in the schema
-turn a replay into a no-op, which is why there is no watermark to keep in
+The patched reader writes one small JSON file per save and never rewrites
+one, so this replays all of them every time. Both UNIQUE constraints in the
+schema turn a replay into a no-op, which is why there is no watermark to keep in
 sync and nothing to corrupt if a run is interrupted.
 
 Usage:
@@ -12,8 +12,10 @@ Usage:
 """
 
 import argparse
+import html
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -23,8 +25,17 @@ from pathlib import Path
 # The tablet's USB-ethernet address. This is fixed by the device and does not
 # depend on either machine's wifi.
 TABLET = "root@10.11.99.1"
-REMOTE_FILE = "/home/root/.majortom/vocab.jsonl"
 CONNECT_TIMEOUT = 8
+
+# One file per save: QML can write a file but not append to one, and a file
+# that is never rewritten cannot be half-overwritten.
+REMOTE_INBOX = "/home/root/.majortom/inbox"
+XOCHITL_DOCS = "/home/root/.local/share/remarkable/xochitl"
+
+READ_ALL = (
+    f"for f in {REMOTE_INBOX}/*.json; do [ -f \"$f\" ] && {{ cat \"$f\"; echo; }}; done; "
+    "true"
+)
 
 
 def log(message: str, error: bool = False) -> None:
@@ -44,32 +55,68 @@ class Unplugged(Exception):
     """The tablet is not connected. The normal state, not an error."""
 
 
-def fetch() -> list[dict]:
-    """Read the log off the tablet. Empty when nothing has been saved yet."""
+def remote(command: str) -> str:
     result = subprocess.run(
-        # `|| true` so a missing file — nothing saved yet — is not mistaken for
-        # a failed connection. ssh reserves 255 for its own transport errors,
-        # which is the only signal that the tablet is really not there.
         ["ssh", "-o", "BatchMode=yes", "-o", f"ConnectTimeout={CONNECT_TIMEOUT}",
-         TABLET, f"cat {REMOTE_FILE} 2>/dev/null || true"],
+         TABLET, command],
         capture_output=True, text=True,
     )
+    # ssh reserves 255 for its own transport errors, which is the only signal
+    # that the tablet is really not there. Commands end in `true`, so a missing
+    # file -- nothing saved yet -- is not mistaken for a failed connection.
     if result.returncode == 255:
         raise Unplugged
     if result.returncode != 0:
         raise ConnectionError(result.stderr.strip() or "reading the tablet failed")
+    return result.stdout
+
+
+def authors_for(document_ids: set) -> dict:
+    """Author per book, read from the EPUB itself.
+
+    reMarkable's own metadata carries only the title. Every EPUB names its
+    author in its package file, and the tablet has unzip. PDFs have no such
+    file and simply come back without an author.
+    """
+    ids = sorted(i for i in document_ids if re.fullmatch(r"[0-9a-f-]{36}", i))
+    if not ids:
+        return {}
+    script = "; ".join(
+        f"printf '%s\\t' {i}; "
+        f"unzip -p {XOCHITL_DOCS}/{i}.epub '*.opf' 2>/dev/null "
+        f"| grep -o '<dc:creator[^>]*>[^<]*' | head -n 1 | sed 's/.*>//'; echo"
+        for i in ids
+    ) + "; true"
+    authors = {}
+    for line in remote(script).splitlines():
+        doc_id, _, name = line.partition("\t")
+        if name.strip():
+            authors[doc_id.strip()] = html.unescape(name.strip())
+    return authors
+
+
+def fetch() -> list:
+    """Every save on the tablet. Empty when there are none."""
+    output = remote(READ_ALL)
 
     entries = []
-    for line_no, line in enumerate(result.stdout.splitlines(), 1):
+    for line_no, line in enumerate(output.splitlines(), 1):
         line = line.strip()
         if not line:
             continue
         try:
             entries.append(json.loads(line))
         except json.JSONDecodeError:
-            # A half-written last line is the one failure mode of an append-only
-            # log. Skip it; the next save rewrites a complete line after it.
-            log(f"skipped malformed line {line_no}", error=True)
+            # A save interrupted mid-write. Skip it rather than fail the rest.
+            log(f"skipped malformed save {line_no}", error=True)
+
+    missing = {e["document_id"] for e in entries
+               if not e.get("author") and isinstance(e.get("document_id"), str)}
+    if missing:
+        authors = authors_for(missing)
+        for e in entries:
+            if not e.get("author") and isinstance(e.get("document_id"), str):
+                e["author"] = authors.get(e["document_id"], "")
     return entries
 
 
