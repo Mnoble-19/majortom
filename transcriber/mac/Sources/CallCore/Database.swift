@@ -121,6 +121,11 @@ public final class Database: @unchecked Sendable {
         if !columnExists("source", "origin") {
             try exec("ALTER TABLE source ADD COLUMN origin TEXT NOT NULL DEFAULT 'mac';")
         }
+        // Owned by the library app; added here too so the query below works on
+        // a file this package created first.
+        if !columnExists("item", "removed_at") {
+            try exec("ALTER TABLE item ADD COLUMN removed_at TEXT;")
+        }
     }
 
     private func columnExists(_ table: String, _ column: String) -> Bool {
@@ -194,7 +199,7 @@ public final class Database: @unchecked Sendable {
     /// than only at the moment of import.
     public func untranslatedItems() throws -> [(id: Int64, text: String, context: String)] {
         try query(
-            "SELECT id, text, context FROM item WHERE translation = '' ORDER BY id;"
+            "SELECT id, text, context FROM item WHERE translation = '' AND removed_at IS NULL ORDER BY id;"
         ) { ($0.int(0), $0.string(1), $0.string(2)) }
     }
 

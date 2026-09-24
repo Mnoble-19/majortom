@@ -1,181 +1,75 @@
+import MajorTomStyle
 import SwiftUI
 
+/// One show, call or book: what was saved from it.
 struct SourceDetailView: View {
     @EnvironmentObject private var store: Store
     let source: Source
-
-    @State private var kind: ItemKind = .word
-    @State private var search = ""
-    @State private var filter: ItemStatus?
-    @State private var sortOrder = [KeyPathComparator(\Item.position)]
-
-    private var all: [Item] { store.items(for: source, kind: kind) }
-
-    private var rows: [Item] {
-        let needle = search.trimmingCharacters(in: .whitespaces).lowercased()
-        return all
-            .filter { filter == nil || $0.status == filter }
-            .filter {
-                needle.isEmpty
-                    || $0.text.lowercased().contains(needle)
-                    || $0.translation.lowercased().contains(needle)
-            }
-            .sorted(using: sortOrder)
-    }
+    @State private var reviewing = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().overlay(Theme.border)
-            table
-        }
-        .background(Theme.bg)
-        .navigationTitle(source.title)
-        .searchable(text: $search, placement: .toolbar, prompt: "Filter")
+        let items = store.items(in: source)
+        // The route carries the source as it was when opened; counts come from
+        // the live copy so they move as words are learned or deleted.
+        let live = store.sources.first { $0.id == source.id } ?? source
+
+        WordBrowser(items: items) { header(live) }
+            .navigationTitle(source.title)
+            .sheet(isPresented: $reviewing) {
+                ReviewView(source: live) { reviewing = false }
+                    .frame(minWidth: 760, minHeight: 640)
+            }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+    private func header(_ source: Source) -> some View {
+        let due = store.dueItems(in: source, limit: 100).count
+
+        return HStack(alignment: .center, spacing: 22) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(subtitle(source)).font(.rounded(15, .semibold)).opacity(0.8)
                 Text(source.title)
-                    .font(Theme.serif(30, .semibold))
-                    .foregroundStyle(Theme.text)
+                    .font(.rounded(32, .heavy))
                     .lineLimit(2)
-                Spacer(minLength: 16)
-                if let url = URL(string: source.url), !source.url.isEmpty {
-                    Link(destination: url) {
-                        Label("Open", systemImage: "arrow.up.right.square")
-                            .font(Theme.ui(14))
-                    }
-                    .foregroundStyle(Theme.muted)
-                }
+                    .textSelection(.enabled)
             }
-
-            if !source.site.isEmpty {
-                Text(source.kind == .book ? source.site : Platform.displayName(for: source.site))
-                    .pill(Theme.secondary)
+            Spacer()
+            ZStack {
+                Ring(progress: source.progress, color: Palette.good, lineWidth: 9)
+                Text("\(source.learnedCount)/\(source.itemCount)")
+                    .font(.rounded(14, .heavy))
+                    .monospacedDigit()
             }
+            .frame(width: 76, height: 76)
+            .help("\(source.learnedCount) of \(source.itemCount) learned")
 
-            HStack(spacing: 16) {
-                Picker("", selection: $kind) {
-                    Text("Words (\(source.wordCount))").tag(ItemKind.word)
-                    Text("Phrases (\(source.phraseCount))").tag(ItemKind.phrase)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .font(Theme.ui(15))
-                .frame(width: 330)
-
-                Picker("", selection: $filter) {
-                    Text("All").tag(ItemStatus?.none)
-                    Text(ItemStatus.learning.label).tag(ItemStatus?.some(.learning))
-                    Text(ItemStatus.learned.label).tag(ItemStatus?.some(.learned))
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .font(Theme.ui(14))
-                .frame(width: 130)
-
-                Spacer()
-
-                if learned > 0 {
-                    Text("\(learned) of \(all.count) learned")
-                        .font(Theme.ui(13))
-                        .foregroundStyle(Theme.success)
-                }
+            if due > 0 {
+                Button("Review \(due)") { reviewing = true }
+                    .buttonStyle(ProminentButtonStyle(fill: source.kind.tint.ink, ink: source.kind.tint.fill))
             }
         }
-        .padding(.horizontal, 30)
-        .padding(.top, 24)
-        .padding(.bottom, 20)
+        .foregroundStyle(source.kind.tint.ink)
+        .padding(26)
+        .background(source.kind.tint.fill, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
     }
 
-    @ViewBuilder
-    private var table: some View {
-        let items = rows
-        if items.isEmpty {
-            EmptyState(
-                icon: kind == .word ? "character.book.closed" : "text.quote",
-                title: search.isEmpty && filter == nil
-                    ? "No \(kind == .word ? "words" : "phrases") saved"
-                    : "No matches",
-                message: search.isEmpty && filter == nil && kind == .phrase && source.kind == .show
-                    ? "Phrase capture is not wired up in the extension yet."
-                    : ""
-            )
-        } else {
-            Table(items, sortOrder: $sortOrder) {
-                TableColumn("") { item in
-                    LearnedButton(status: item.status) { store.toggleLearned(item) }
-                        .padding(.vertical, 9)
-                }
-                .width(30)
-
-                TableColumn("") { item in
-                    StarButton(starred: item.starred) { store.toggleStar(item) }
-                        .padding(.vertical, 9)
-                }
-                .width(30)
-
-                TableColumn(kind == .word ? "Word" : "Phrase", value: \.text) { item in
-                    Text(item.text)
-                        .font(Theme.serif(17, .medium))
-                        .foregroundStyle(Theme.accent)
-                        .strikethrough(item.status == .learned, color: Theme.faint)
-                        .opacity(dim(item))
-                        .padding(.vertical, 9)
-                }
-                .width(min: 150, ideal: 220)
-
-                TableColumn("Translation", value: \.translation) { item in
-                    Text(item.translation)
-                        .font(Theme.ui(16))
-                        .foregroundStyle(Theme.secondary)
-                        .opacity(dim(item))
-                        .padding(.vertical, 9)
-                }
-                .width(min: 150, ideal: 240)
-
-                TableColumn("Context", value: \.context) { item in
-                    Text(item.context)
-                        .font(Theme.ui(15))
-                        .foregroundStyle(Theme.muted)
-                        .opacity(dim(item))
-                        .help(item.contextTranslation)
-                        .padding(.vertical, 9)
-                }
-
-                TableColumn(positionLabel, value: \.position) { item in
-                    Text(position(item.position))
-                        .font(Theme.mono(14))
-                        .foregroundStyle(Theme.faint)
-                        .opacity(dim(item))
-                        .padding(.vertical, 9)
-                }
-                .width(70)
-            }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bg)
+    private func subtitle(_ source: Source) -> String {
+        switch source.kind {
+        case .show: return "\(Platform.displayName(for: source.site)) · \(source.lastSavedAt.relativeDay)"
+        case .call: return "With \(source.site) · \(source.createdAt.relativeDay)"
+        case .book: return source.site.isEmpty ? "Book" : source.site
         }
     }
+}
 
-    private var learned: Int { all.filter { $0.status == .learned }.count }
+struct AllWordsView: View {
+    @EnvironmentObject private var store: Store
 
-    /// Learned rows stay in the list but recede.
-    private func dim(_ item: Item) -> Double {
-        item.status == .learned ? 0.4 : 1
-    }
+    var body: some View {
+        let items = store.allItems()
 
-    private var positionLabel: String {
-        source.kind == .book ? "Page" : "At"
-    }
-
-    /// `position` is seconds into a video or call, but a page in a book, and
-    /// rendering page 16 as "0:16" would be quietly wrong.
-    private func position(_ value: Double) -> String {
-        guard value > 0 else { return "—" }
-        if source.kind == .book { return String(Int(value)) }
-        let total = Int(value)
-        return String(format: "%d:%02d", total / 60, total % 60)
+        WordBrowser(items: items, showsSource: true) {
+            PageTitle(title: "All words", subtitle: "\(items.count) saved, newest first")
+        }
+        .navigationTitle("All words")
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
-/// Where saved material came from. Shows exist today; calls and books are the
-/// same shape, so those projects write into these tables without a migration.
+/// Where saved material came from. Shows, calls and books share one shape, so
+/// every capture tool writes into the same tables.
 enum SourceKind: String, Codable, CaseIterable {
     case show, call, book
 }
@@ -34,6 +34,9 @@ struct Source: Identifiable, Hashable {
     var phraseCount: Int
     var lastSavedAt: Date
     var learnedCount: Int
+
+    var itemCount: Int { wordCount + phraseCount }
+    var progress: Double { itemCount == 0 ? 0 : Double(learnedCount) / Double(itemCount) }
 }
 
 /// Sources grouped by the site they came from. Derived, never stored: the
@@ -63,30 +66,45 @@ struct Platform: Identifiable, Hashable {
         let base = host.split(separator: ".").dropLast().last.map(String.init) ?? host
         return base.prefix(1).uppercased() + base.dropFirst()
     }
-
-    var icon: String {
-        switch name {
-        case "YouTube", "Vimeo", "Dailymotion": return "play.rectangle.fill"
-        case "Netflix", "Disney+": return "film.fill"
-        case "Twitch": return "dot.radiowaves.left.and.right"
-        default: return "antenna.radiowaves.left.and.right"
-        }
-    }
 }
 
 struct Item: Identifiable, Hashable {
     var id: Int64
     var sourceID: Int64
+    var sourceKind: SourceKind
+    var sourceTitle: String
+    var sourceURL: String
     var kind: ItemKind
     var text: String
     var translation: String
     var context: String
     var contextTranslation: String
-    /// Playback seconds for video, offset for calls, locator for books.
+    /// Playback seconds for video, offset for calls, page for books.
     var position: Double
     var starred: Bool
     var status: ItemStatus
     var createdAt: Date
+
+    /// "23:14" into a show or call, "page 48" in a book. Rendering a page as a
+    /// time would be quietly wrong, so the two never share a format.
+    var positionLabel: String? {
+        guard position > 0 else { return nil }
+        if sourceKind == .book { return "page \(Int(position))" }
+        let total = Int(position)
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// The numbers the home screen is built from, read in one go.
+struct Stats: Equatable {
+    var learning = 0
+    var learned = 0
+    var savedToday = 0
+    var untranslated = 0
+    var due = 0
+    var reviewedToday = 0
+    /// Consecutive days, ending today or yesterday, with at least one review.
+    var streak = 0
 }
 
 /// A `VocabEntry` as the extension serialises it over native messaging.

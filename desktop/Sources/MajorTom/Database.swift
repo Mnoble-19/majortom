@@ -83,9 +83,29 @@ final class Database {
             """)
 
         // Additive migrations for databases created before a column existed.
-        if !columnExists("item", "status") {
-            try exec("ALTER TABLE item ADD COLUMN status TEXT NOT NULL DEFAULT 'learning';")
+        // Every one of these is owned by the app, so none of the writers'
+        // `ON CONFLICT ... DO UPDATE` clauses may touch them.
+        let added = [
+            ("status", "TEXT NOT NULL DEFAULT 'learning'"),
+            // Soft delete: a hard delete would come straight back on the next
+            // browser resend, which carries the whole vocabulary every time.
+            ("removed_at", "TEXT"),
+            ("review_streak", "INTEGER NOT NULL DEFAULT 0"),
+            ("review_due", "TEXT"),
+        ]
+        for (column, definition) in added where !columnExists("item", column) {
+            try exec("ALTER TABLE item ADD COLUMN \(column) \(definition);")
         }
+
+        try exec("""
+            CREATE TABLE IF NOT EXISTS review (
+                id      INTEGER PRIMARY KEY,
+                item_id INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
+                correct INTEGER NOT NULL,
+                at      TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS review_at ON review(at);
+            """)
     }
 
     private func columnExists(_ table: String, _ column: String) -> Bool {

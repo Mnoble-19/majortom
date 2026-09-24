@@ -12,7 +12,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "MajorTom",
-            dependencies: [.product(name: "CallCore", package: "mac")],
+            dependencies: [
+                .product(name: "CallCore", package: "mac"),
+                .product(name: "MajorTomStyle", package: "mac"),
+            ],
             path: "Sources/MajorTom",
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
