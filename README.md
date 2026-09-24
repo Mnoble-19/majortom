@@ -13,7 +13,7 @@ SQLite file, so everything ends up in one library.
 | [desktop](desktop) | Native macOS app holding everything you save — the library itself. |
 | [transcriber](transcriber) | Live transcription of a call on the Mac, and an iPhone app for the same thing in person. |
 | [site](site) | The public page for the project. |
-| [remarkable](remarkable) | A KOReader plugin that saves words while reading on the tablet. |
+| [remarkable](remarkable) | A patch for the reMarkable's own reader: highlight text, translate it, save it. |
 
 ## How they fit together
 
@@ -26,7 +26,7 @@ remarkable ────┘
 ```
 
 Only the Mac writes to the library. The iPhone sends what it collected over
-the local network, and the reMarkable's file is pulled over USB — neither
+the local network, and the reMarkable's saves are pulled over USB — neither
 touches the database itself.
 
 `data/` sits at the root because no single project owns it. Two tables — sources

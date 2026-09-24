@@ -164,7 +164,7 @@ to reuse it, generalise `NativeHost.write` in
 [NativeHost.swift](Sources/MajorTom/NativeHost.swift).
 
 Phrase capture (`item.kind = 'phrase'`) is written by the
-[reMarkable plugin](../remarkable); the extension still only writes words.
+[reMarkable patch](../remarkable); the extension still only writes words.
 
 ## Native messaging protocol
 
