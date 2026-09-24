@@ -19,7 +19,12 @@ struct ShowsView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
-                        PageTitle(title: "Shows", subtitle: "\(platforms.count) \(platforms.count == 1 ? "platform" : "platforms")")
+                        HStack(alignment: .bottom) {
+                            PageTitle(title: "Shows",
+                                      subtitle: "\(platforms.count) \(platforms.count == 1 ? "platform" : "platforms")")
+                            Spacer()
+                            TranslateButton(scope: .kind(.show))
+                        }
                         LazyVGrid(columns: columns, spacing: 20) {
                             ForEach(platforms) { platform in
                                 Tile(tint: Palette.shows, height: 150, action: { openPlatform(platform) }) {

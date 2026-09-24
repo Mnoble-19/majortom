@@ -18,7 +18,11 @@ struct CallsView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
-                        PageTitle(title: "Calls", subtitle: phoneStatus)
+                        HStack(alignment: .bottom) {
+                            PageTitle(title: "Calls", subtitle: phoneStatus)
+                            Spacer()
+                            TranslateButton(scope: .kind(.call))
+                        }
                         if let arrival = phone.lastArrival {
                             Banner(message: arrival)
                         }

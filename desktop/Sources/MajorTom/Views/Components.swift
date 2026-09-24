@@ -176,6 +176,44 @@ struct Banner: View {
     }
 }
 
+/// "Translate 4" for the words in view that still have no meaning, whether
+/// they came from a call, the phone or anywhere else. Hidden when there are
+/// none; shows progress while it runs and what happened after.
+struct TranslateButton: View {
+    @EnvironmentObject private var store: Store
+    @EnvironmentObject private var translations: Translations
+    var scope: Scope = .all
+
+    var body: some View {
+        let waiting = store.untranslatedItems(in: scope).count
+
+        HStack(spacing: 12) {
+            if let outcome = translations.outcome, !translations.running {
+                Text(outcome.message)
+                    .font(.rounded(13, .medium))
+                    .foregroundStyle(outcome.isFailure ? Palette.warmText : Palette.goodText)
+                    .multilineTextAlignment(.trailing)
+                    .lineLimit(3)
+                    .frame(maxWidth: 340, alignment: .trailing)
+            }
+            if translations.running {
+                ProgressView(value: Double(translations.done), total: Double(max(1, translations.total)))
+                    .frame(width: 80)
+                Text("Translating \(translations.done) of \(translations.total)")
+                    .font(.rounded(13, .semibold))
+                    .foregroundStyle(Palette.secondary)
+                    .monospacedDigit()
+            } else if waiting > 0 {
+                Button { translations.translateWaiting(in: scope) } label: {
+                    Label("Translate \(waiting)", systemImage: "character.book.closed.fill")
+                }
+                .buttonStyle(ProminentButtonStyle(fill: Palette.shows.fill, ink: Palette.shows.ink))
+                .help("Fill in a meaning for every word here that has none")
+            }
+        }
+    }
+}
+
 /// Button look for the one main action on a screen.
 struct ProminentButtonStyle: ButtonStyle {
     var fill: Color = Palette.accent

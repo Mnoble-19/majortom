@@ -22,6 +22,7 @@ struct BooksView: View {
                 HStack(alignment: .bottom) {
                     PageTitle(title: "Books", subtitle: summary(books))
                     Spacer()
+                    TranslateButton(scope: .kind(.book))
                     syncButton
                 }
 
