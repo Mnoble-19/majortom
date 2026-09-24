@@ -2,7 +2,7 @@ import CallCore
 import Foundation
 import Observation
 
-/// A word you clicked during this session.
+/// A word or phrase you clicked during this session.
 ///
 /// It carries no translation. Translating is the library app's job — words are
 /// saved blank here and filled in there, which is the same path the phone's
@@ -117,16 +117,49 @@ final class SessionModel {
         saved = []
     }
 
-    /// Saves straight away, with no translation. The library app fills those in.
-    func save(word rawWord: String, from line: Line) {
-        let word = rawWord.trimmingCharacters(in: CharacterSet.punctuationCharacters)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !word.isEmpty, let session else { return }
-        guard !saved.contains(where: { $0.word.caseInsensitiveCompare(word) == .orderedSame }) else { return }
+    /// The word last clicked, where a phrase starts if the next click holds
+    /// Shift. Cleared once the phrase is saved.
+    private(set) var phraseStart: (line: Line.ID, index: Int, saved: SavedWord.ID?)?
 
-        let sentence = line.sentence(containing: word)
-        try? session.save(word: word, from: line)
-        saved.append(SavedWord(word: word, sentence: sentence, position: line.start))
+    /// A plain click saves the word. A Shift-click on another word in the same
+    /// line turns the last clicked word into the phrase running between them.
+    func tap(_ index: Int, in line: Line, extending: Bool) {
+        let tokens = line.text.split(separator: " ").map(String.init)
+        guard tokens.indices.contains(index) else { return }
+
+        if extending, let start = phraseStart, start.line == line.id, start.index != index {
+            let phrase = Self.clean(tokens[min(start.index, index)...max(start.index, index)]
+                .joined(separator: " "))
+            if let id = start.saved, let i = saved.firstIndex(where: { $0.id == id }) {
+                try? session?.correct(saved[i].word, to: phrase, from: line)
+                saved[i].word = phrase
+                saved[i].sentence = line.sentence(containing: phrase)
+            } else {
+                save(phrase, from: line)
+            }
+            phraseStart = nil
+            return
+        }
+        phraseStart = (line.id, index, save(tokens[index], from: line))
+    }
+
+    /// Saves straight away, with no translation. The library app fills those in.
+    @discardableResult
+    private func save(_ raw: String, from line: Line) -> SavedWord.ID? {
+        let text = Self.clean(raw)
+        guard !text.isEmpty, let session else { return nil }
+        guard !saved.contains(where: { $0.word.caseInsensitiveCompare(text) == .orderedSame }) else { return nil }
+
+        try? session.save(word: text, from: line)
+        let word = SavedWord(word: text, sentence: line.sentence(containing: text), position: line.start)
+        saved.append(word)
+        return word.id
+    }
+
+    /// Trims the punctuation a transcript leaves on the ends — "Ahnung," — but
+    /// keeps what sits inside a phrase.
+    private static func clean(_ text: String) -> String {
+        text.trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines))
     }
 
     /// Rewrites a word after you correct what the recognizer heard.

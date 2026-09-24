@@ -1,3 +1,4 @@
+import AppKit
 import CallCore
 import MajorTomStyle
 import SwiftUI
@@ -11,7 +12,7 @@ struct TranscriptView: View {
         ScrollViewReader { scroll in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    Text("Click any word to save it")
+                    Text("Click a word to save it · Shift-click another word in the line to save the phrase between")
                         .font(.rounded(12, .semibold))
                         .foregroundStyle(Palette.tertiary)
                         .frame(maxWidth: .infinity)
@@ -26,12 +27,17 @@ struct TranscriptView: View {
                     ForEach(model.lines) { line in
                         Bubble {
                             FlowLayout(spacing: 3, lineSpacing: 3) {
-                                ForEach(Array(line.text.split(separator: " ").enumerated()), id: \.offset) { _, token in
+                                ForEach(Array(line.text.split(separator: " ").enumerated()), id: \.offset) { index, token in
                                     let word = String(token)
                                     WordButton(
                                         word: word,
                                         isSaved: savedWords.contains(Self.bare(word)),
-                                        action: { model.save(word: word, from: line) })
+                                        isPhraseStart: model.phraseStart?.line == line.id
+                                            && model.phraseStart?.index == index,
+                                        action: {
+                                            model.tap(index, in: line,
+                                                      extending: NSEvent.modifierFlags.contains(.shift))
+                                        })
                                 }
                             }
                         }
@@ -58,8 +64,9 @@ struct TranscriptView: View {
         }
     }
 
+    /// Every word of every saved word or phrase, for highlighting.
     private var savedWords: Set<String> {
-        Set(model.saved.map { $0.word.lowercased() })
+        Set(model.saved.flatMap { $0.word.lowercased().split(separator: " ").map(String.init) })
     }
 
     static func bare(_ word: String) -> String {
@@ -87,6 +94,7 @@ private struct Bubble<Content: View>: View {
 private struct WordButton: View {
     let word: String
     let isSaved: Bool
+    let isPhraseStart: Bool
     let action: () -> Void
     @State private var hovering = false
 
@@ -98,6 +106,10 @@ private struct WordButton: View {
             .foregroundStyle(isSaved ? Palette.onHighlight : Palette.text)
             .background(isSaved ? Palette.highlight : hovering ? Palette.raised : .clear,
                         in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(isPhraseStart ? Palette.accent : .clear, lineWidth: 2))
+            .help(isPhraseStart ? "Shift-click another word to save the phrase" : "")
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .onTapGesture(perform: action)
