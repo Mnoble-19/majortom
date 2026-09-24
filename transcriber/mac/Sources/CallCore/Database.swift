@@ -157,7 +157,7 @@ public final class Database: @unchecked Sendable {
     }
 
     /// Saving the same word twice in one session updates it rather than
-    /// failing, which is what makes a later translation pass possible.
+    /// failing. A resend with no translation keeps the one already filled in.
     public func upsertItem(
         sourceID: Int64,
         text: String,
@@ -174,9 +174,10 @@ public final class Database: @unchecked Sendable {
                               context_translation, position, starred, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
             ON CONFLICT(source_id, kind, text) DO UPDATE SET
-                translation = excluded.translation,
+                translation = COALESCE(NULLIF(excluded.translation, ''), item.translation),
                 context = excluded.context,
-                context_translation = excluded.context_translation;
+                context_translation = COALESCE(
+                    NULLIF(excluded.context_translation, ''), item.context_translation);
             """,
             [sourceID, kind, text, translation, context, contextTranslation, position,
              ISO8601.string(createdAt)]

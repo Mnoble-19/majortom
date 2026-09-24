@@ -104,7 +104,7 @@ def import_entries(conn: sqlite3.Connection, entries: list[dict]) -> tuple[int, 
                                  context_translation, position, starred, created_at)
                VALUES (?, ?, ?, ?, ?, '', ?, 0, ?)
                ON CONFLICT(source_id, kind, text) DO UPDATE SET
-                   translation = excluded.translation,
+                   translation = COALESCE(NULLIF(excluded.translation, ''), item.translation),
                    context     = excluded.context,
                    position    = excluded.position""",
             (
