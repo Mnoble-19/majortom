@@ -63,9 +63,18 @@ struct CallsView: View {
         let calls: [Source]
     }
 
+    /// Grouped loosely, so "lena" and "Lena " are one person; shown with the
+    /// spelling of their latest call.
     private func people(in calls: [Source]) -> [Person] {
-        Dictionary(grouping: calls) { $0.site.isEmpty ? "Unknown" : $0.site }
-            .map { Person(name: $0.key, calls: $0.value.sorted { $0.createdAt > $1.createdAt }) }
-            .sorted { ($0.calls.first?.createdAt ?? .distantPast) > ($1.calls.first?.createdAt ?? .distantPast) }
+        Dictionary(grouping: calls) {
+            $0.site.trimmingCharacters(in: .whitespaces)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        }
+        .map { _, group in
+            let sorted = group.sorted { $0.createdAt > $1.createdAt }
+            let name = sorted.first?.site.trimmingCharacters(in: .whitespaces) ?? ""
+            return Person(name: name.isEmpty ? "Unknown" : name, calls: sorted)
+        }
+        .sorted { ($0.calls.first?.createdAt ?? .distantPast) > ($1.calls.first?.createdAt ?? .distantPast) }
     }
 }
