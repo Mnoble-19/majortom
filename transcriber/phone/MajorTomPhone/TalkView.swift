@@ -26,14 +26,10 @@ private struct SetupView: View {
     let pending: PendingWords
     @FocusState private var nameFocused: Bool
 
-    /// People already waiting to sync, so a second chat with the same person
-    /// is one tap away.
+    /// People you have talked to before, so the next chat with them is a tap.
     private var recentPeople: [String] {
-        var seen = Set<String>()
-        return pending.sessions.reversed()
-            .filter { $0.id != PendingWords.ownSessionID }
-            .map(\.person)
-            .filter { seen.insert($0).inserted }
+        let typed = session.person.trimmingCharacters(in: .whitespaces)
+        return PhoneSession.recentPeople.filter { $0.caseInsensitiveCompare(typed) != .orderedSame }
     }
 
     var body: some View {
@@ -147,10 +143,17 @@ private struct LiveView: View {
     let pending: PendingWords
     @State private var justSaved: String?
     @State private var toastTask: Task<Void, Never>?
+    /// Set by a long press: the first word of a phrase, waiting for a tap on
+    /// its last word.
+    @State private var phraseStart: (line: Line.ID, index: Int)?
 
+    private var saved: [SyncPayload.Word] {
+        pending.sessions.first { $0.id == session.sessionID }?.words ?? []
+    }
+
+    /// Every word of every saved word or phrase, for highlighting.
     private var savedWords: Set<String> {
-        let words = pending.sessions.first { $0.id == session.sessionID }?.words ?? []
-        return Set(words.map { $0.text.lowercased() })
+        Set(saved.flatMap { $0.text.lowercased().split(separator: " ").map(String.init) })
     }
 
     var body: some View {
@@ -159,8 +162,8 @@ private struct LiveView: View {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     ForEach(session.lines) { line in
                         FlowLayout(spacing: 4, lineSpacing: 6) {
-                            ForEach(Array(line.text.split(separator: " ").enumerated()), id: \.offset) { _, token in
-                                word(String(token), in: line)
+                            ForEach(Array(line.text.split(separator: " ").enumerated()), id: \.offset) { index, token in
+                                word(String(token), at: index, in: line)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -198,16 +201,43 @@ private struct LiveView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func word(_ text: String, in line: Line) -> some View {
-        let bare = text.trimmingCharacters(in: .punctuationCharacters)
+    private func word(_ text: String, at index: Int, in line: Line) -> some View {
+        let bare = Self.clean(text)
         let isSaved = savedWords.contains(bare.lowercased())
+        let isStart = phraseStart?.line == line.id && phraseStart?.index == index
         return Text(text)
             .font(.rounded(21, isSaved ? .bold : .regular))
             .padding(.horizontal, 3)
             .padding(.vertical, 2)
             .highlighted(isSaved)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(isStart ? Palette.accent : .clear, lineWidth: 2))
             .contentShape(Rectangle())
-            .onTapGesture { save(bare, from: line) }
+            .onTapGesture { tap(index, in: line) }
+            .onLongPressGesture(minimumDuration: 0.4) {
+                phraseStart = (line.id, index)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+    }
+
+    /// A tap saves the word — or, after a long press on another word in the
+    /// same line, the phrase running between the two.
+    private func tap(_ index: Int, in line: Line) {
+        let tokens = line.text.split(separator: " ").map(String.init)
+        defer { phraseStart = nil }
+        if let start = phraseStart, start.line == line.id, start.index != index {
+            save(Self.clean(tokens[min(start.index, index)...max(start.index, index)].joined(separator: " ")),
+                 from: line)
+        } else {
+            save(Self.clean(tokens[index]), from: line)
+        }
+    }
+
+    /// Trims the punctuation a transcript leaves on the ends — "Ahnung," — but
+    /// keeps what sits inside a phrase.
+    private static func clean(_ text: String) -> String {
+        text.trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines))
     }
 
     private var header: some View {
@@ -251,7 +281,7 @@ private struct LiveView: View {
 
     private var controls: some View {
         HStack {
-            Text("\(savedWords.count) saved")
+            Text("\(saved.count) saved")
                 .font(.rounded(15, .heavy))
                 .foregroundStyle(Palette.onHighlight)
                 .padding(.horizontal, 14)
@@ -270,7 +300,7 @@ private struct LiveView: View {
                     .background(Palette.bad.opacity(0.18), in: Circle())
             }
             .accessibilityLabel("Stop listening")
-            Text("Tap a word\nto keep it")
+            Text(phraseStart == nil ? "Tap a word to keep it.\nHold one to start a phrase." : "Now tap the\nphrase’s last word")
                 .font(.rounded(13, .medium))
                 .foregroundStyle(Palette.secondary)
                 .multilineTextAlignment(.trailing)

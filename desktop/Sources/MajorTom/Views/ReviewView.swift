@@ -52,6 +52,12 @@ struct ReviewView: View {
                 .font(.rounded(15, .heavy))
                 .foregroundStyle(Palette.accentText)
                 .monospacedDigit()
+            Button("Stop", action: onDone)
+                .buttonStyle(.plain)
+                .font(.rounded(14, .semibold))
+                .foregroundStyle(Palette.secondary)
+                .keyboardShortcut(.cancelAction)
+                .help("Stop reviewing; answers so far are kept")
         }
         .frame(maxWidth: 640)
     }

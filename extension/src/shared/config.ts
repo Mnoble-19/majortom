@@ -18,8 +18,9 @@ export const DEFAULT_SETTINGS: Settings = {
     showSecondary: true,
     hideNativeCaptions: true,
     fontScale: 1,
-    // Clears the control bar on YouTube, ARD and ZDF, which sit ~10-13% up.
-    offsetPct: 15,
+    // Low in the frame. The overlay lifts clear of the player's controls
+    // whenever they show, which is only while the player is hovered.
+    offsetPct: 9,
     disabledHosts: [],
 };
 

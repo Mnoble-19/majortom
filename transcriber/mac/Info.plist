@@ -22,12 +22,9 @@
     <string>26.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
-
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Your side of the call is transcribed so the vocabulary you save keeps the sentence it came from. Audio is processed on this Mac and never leaves it.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>German speech is transcribed on this Mac using the on-device model. Nothing is sent to a server.</string>
     <key>NSAudioCaptureUsageDescription</key>
-    <string>The other person's voice is read from whichever app the call is on, so their words can be transcribed alongside yours.</string>
+    <string>The other person's voice is read from whichever app the call is on, so their words can be transcribed.</string>
 </dict>
 </plist>

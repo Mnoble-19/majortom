@@ -9,6 +9,9 @@ public struct Gloss: Sendable, Equatable {
     public var meaning: String
     /// The surrounding sentence in English.
     public var sentence: String
+    /// Other German words for the same meaning, a small thesaurus. Only the
+    /// model gives these; Apple's translator leaves it empty.
+    public var alternatives: [String] = []
     public var origin: Origin
 
     public enum Origin: String, Sendable {
@@ -137,6 +140,10 @@ public struct ModelTranslator: Sendable {
         let meaning = tidy(answer.english_meaning)
         var english = tidy(answer.english_sentence)
         let form = tidy(answer.dictionary_form)
+        var seen = Set([word.lowercased(), form.lowercased()])
+        let alternatives = (answer.german_synonyms ?? [])
+            .map(tidy)
+            .filter { !$0.isEmpty && $0.count <= 60 && seen.insert($0.lowercased()).inserted }
 
         guard !meaning.isEmpty else { throw TranslatorError.emptyReply }
         // A gloss is a few words. A paragraph means the model ignored the
@@ -154,11 +161,13 @@ public struct ModelTranslator: Sendable {
             dictionaryForm: form.isEmpty ? word : form,
             meaning: meaning,
             sentence: english,
+            alternatives: Array(alternatives.prefix(Self.maxAlternatives)),
             origin: .model
         )
     }
 
     private static let maxMeaning = 300
+    private static let maxAlternatives = 5
 
     private static func rejectedTheSchema(_ code: Int, _ body: String) -> Bool {
         guard (400..<500).contains(code) else { return false }
@@ -221,9 +230,10 @@ public struct ModelTranslator: Sendable {
                         "properties": [
                             "dictionary_form": ["type": "string"],
                             "english_meaning": ["type": "string"],
-                            "english_sentence": ["type": "string"]
+                            "english_sentence": ["type": "string"],
+                            "german_synonyms": ["type": "array", "items": ["type": "string"]]
                         ],
-                        "required": ["dictionary_form", "english_meaning", "english_sentence"],
+                        "required": ["dictionary_form", "english_meaning", "english_sentence", "german_synonyms"],
                         "additionalProperties": false
                     ]
                 ]
@@ -252,7 +262,10 @@ public struct ModelTranslator: Sendable {
         is a short English gloss of what the word means *in this context* — if \
         it has several senses, give the one actually used here rather than \
         listing them all. `english_sentence` is the sentence translated into \
-        English. Write English in the English fields.
+        English. `german_synonyms` lists up to five other German words or short \
+        phrases that mean the same thing in this context, most common first; \
+        leave it empty if there are none. Write English in the English fields \
+        and German in the German one.
         """
 
     private static func userPrompt(word: String, sentence: String, context: [String]) -> String {
@@ -290,6 +303,8 @@ public struct ModelTranslator: Sendable {
         let dictionary_form: String
         let english_meaning: String
         let english_sentence: String
+        /// Optional so a model that ignores it still yields a usable gloss.
+        let german_synonyms: [String]?
 
         /// Tolerant of a model that wraps its JSON in prose or a code fence.
         static func extract(from text: String) -> Answer? {

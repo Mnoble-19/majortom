@@ -121,7 +121,7 @@ enum NativeHost {
                 VALUES (?, 'word', ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(source_id, kind, text) DO UPDATE SET
                     translation = COALESCE(NULLIF(excluded.translation, ''), item.translation),
-                    context = excluded.context,
+                    context = COALESCE(NULLIF(item.context, ''), excluded.context),
                     context_translation = COALESCE(
                         NULLIF(excluded.context_translation, ''), item.context_translation),
                     position = excluded.position

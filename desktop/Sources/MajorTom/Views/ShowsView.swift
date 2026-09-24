@@ -19,7 +19,12 @@ struct ShowsView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
-                        PageTitle(title: "Shows", subtitle: "\(platforms.count) \(platforms.count == 1 ? "platform" : "platforms")")
+                        HStack(alignment: .bottom) {
+                            PageTitle(title: "Shows",
+                                      subtitle: "\(platforms.count) \(platforms.count == 1 ? "platform" : "platforms")")
+                            Spacer()
+                            TranslateButton(scope: .kind(.show))
+                        }
                         LazyVGrid(columns: columns, spacing: 20) {
                             ForEach(platforms) { platform in
                                 Tile(tint: Palette.shows, height: 150, action: { openPlatform(platform) }) {
@@ -56,6 +61,7 @@ struct PlatformView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                BackButton(label: "Shows")
                 PageTitle(title: name,
                           subtitle: "\(shows.count) \(shows.count == 1 ? "show" : "shows") · \(shows.reduce(0) { $0 + $1.itemCount }) saved")
                 SourceGrid(sources: shows, open: openShow)
@@ -104,6 +110,8 @@ struct SourceCard: View {
     var showsPlatform = false
     let open: () -> Void
     @State private var hovering = false
+    @State private var deleting = false
+    @State private var renaming = false
 
     var body: some View {
         Button(action: open) {
@@ -144,5 +152,11 @@ struct SourceCard: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
+        .contextMenu {
+            Button("Rename…") { renaming = true }
+            Button("Delete \(source.kind.noun)…", role: .destructive) { deleting = true }
+        }
+        .confirmDeleting(source, isPresented: $deleting)
+        .renaming(source, isPresented: $renaming)
     }
 }

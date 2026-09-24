@@ -48,9 +48,12 @@ struct CallView: View {
             if model.isRunning {
                 HStack(spacing: 0) {
                     TranscriptView(model: model)
-                    SavedWordsView(words: model.saved, onCorrect: model.recorrect)
+                    SavedWordsView(words: model.saved, onEdit: model.update, onDelete: model.remove)
                         .frame(width: 260)
                 }
+            } else if let finished = model.finished {
+                SummaryView(person: finished.person, words: model.saved,
+                            onEdit: model.update, onDelete: model.remove, onNewCall: model.startOver)
             } else {
                 SetupView(model: model)
             }
@@ -108,9 +111,9 @@ private struct SessionHeader: View {
                                 .monospacedDigit()
                         }
                     }
-                    Text("·")
-                    Text(model.tappedApp.map { "hearing \($0)" } ?? "mic only — no app playing audio")
-                        .foregroundStyle(model.tappedApp == nil ? Palette.warmText : Palette.secondary)
+                    if let app = model.tappedApp {
+                        Text("· hearing \(app)")
+                    }
                 }
                 .font(.rounded(11, .medium))
                 .foregroundStyle(Palette.secondary)
@@ -137,13 +140,21 @@ private struct SetupView: View {
     let model: SessionModel
     @FocusState private var nameFocused: Bool
 
+    /// People from earlier calls, other than the one already typed.
+    private var others: [String] {
+        let typed = model.person.trimmingCharacters(in: .whitespaces)
+        return Array(model.knownPeople
+            .filter { $0.caseInsensitiveCompare(typed) != .orderedSame }
+            .prefix(4))
+    }
+
     var body: some View {
         VStack(spacing: 22) {
             Avatar(name: model.person.isEmpty ? "?" : model.person, size: 72)
 
             VStack(spacing: 6) {
                 Text("Who are you talking to?").font(.rounded(24, .heavy))
-                Text("Both sides are transcribed live. Click any word to keep it with its sentence — the transcript itself is never saved.")
+                Text("Start the call first. What they say is transcribed live; click any word to keep it with its sentence. The transcript itself is never saved.")
                     .font(.rounded(14))
                     .foregroundStyle(Palette.secondary)
                     .multilineTextAlignment(.center)
@@ -158,6 +169,19 @@ private struct SetupView: View {
                 .frame(width: 300)
                 .background(Palette.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .focused($nameFocused)
+
+            if !others.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(others, id: \.self) { name in
+                        Button(name) { model.choose(name) }
+                            .buttonStyle(.plain)
+                            .font(.rounded(14, .semibold))
+                            .padding(.horizontal, 14)
+                            .frame(height: 30)
+                            .background(Palette.card, in: Capsule())
+                    }
+                }
+            }
 
             Picker("Spoken in", selection: Binding(
                 get: { model.localeIdentifier }, set: { model.localeIdentifier = $0 })) {
@@ -190,5 +214,55 @@ private struct SetupView: View {
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { nameFocused = model.person.isEmpty }
+    }
+}
+
+/// After a call: what was saved, and the way on to translating it. Calls save
+/// words without a meaning; the library app fills those in.
+private struct SummaryView: View {
+    let person: String
+    let words: [SavedWord]
+    let onEdit: (SavedWord.ID, String, String) -> Void
+    let onDelete: (SavedWord.ID) -> Void
+    let onNewCall: () -> Void
+
+    var body: some View {
+        VStack(spacing: 22) {
+            VStack(spacing: 6) {
+                Text("Call with \(person)").font(.rounded(24, .heavy))
+                Text("\(words.count) \(words.count == 1 ? "word" : "words") saved. Fix or trim them here, then translate them in MajorTom, under Calls.")
+                    .font(.rounded(14))
+                    .foregroundStyle(Palette.secondary)
+            }
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(words) { word in
+                        SavedWordRow(word: word, onEdit: onEdit, onDelete: onDelete)
+                    }
+                }
+            }
+            .frame(maxWidth: 460, maxHeight: 280)
+
+            HStack(spacing: 12) {
+                Button("New call", action: onNewCall)
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                Button("Open in MajorTom", action: openLibrary)
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func openLibrary() {
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.majortom.desktop")
+        else { return }
+        NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
     }
 }

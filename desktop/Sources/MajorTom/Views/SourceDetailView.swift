@@ -6,6 +6,9 @@ struct SourceDetailView: View {
     @EnvironmentObject private var store: Store
     let source: Source
     @State private var reviewing = false
+    @State private var deleting = false
+    @State private var renaming = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let items = store.items(in: source)
@@ -13,12 +16,19 @@ struct SourceDetailView: View {
         // the live copy so they move as words are learned or deleted.
         let live = store.sources.first { $0.id == source.id } ?? source
 
-        WordBrowser(items: items) { header(live) }
-            .navigationTitle(source.title)
+        WordBrowser(items: items) {
+            VStack(alignment: .leading, spacing: 16) {
+                BackButton()
+                header(live)
+            }
+        }
+            .navigationTitle(live.title)
             .sheet(isPresented: $reviewing) {
                 ReviewView(source: live) { reviewing = false }
                     .frame(minWidth: 760, minHeight: 640)
             }
+            .confirmDeleting(live, isPresented: $deleting) { dismiss() }
+            .renaming(live, isPresented: $renaming)
     }
 
     private func header(_ source: Source) -> some View {
@@ -42,9 +52,23 @@ struct SourceDetailView: View {
             .frame(width: 76, height: 76)
             .help("\(source.learnedCount) of \(source.itemCount) learned")
 
-            if due > 0 {
-                Button("Review \(due)") { reviewing = true }
-                    .buttonStyle(ProminentButtonStyle(fill: source.kind.tint.ink, ink: source.kind.tint.fill))
+            VStack(alignment: .trailing, spacing: 10) {
+                if due > 0 {
+                    Button("Review \(due)") { reviewing = true }
+                        .buttonStyle(ProminentButtonStyle(fill: source.kind.tint.ink, ink: source.kind.tint.fill))
+                }
+                TranslateButton(scope: .source(source))
+                HStack(spacing: 14) {
+                    Button { renaming = true } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
+                    Button { deleting = true } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+                .font(.rounded(13, .semibold))
+                .buttonStyle(.plain)
+                .opacity(0.8)
             }
         }
         .foregroundStyle(source.kind.tint.ink)
@@ -65,7 +89,7 @@ struct SourceDetailView: View {
 /// Words you typed in yourself, and the place to type more.
 struct MyWordsView: View {
     @EnvironmentObject private var store: Store
-    @EnvironmentObject private var phone: PhoneSync
+    @EnvironmentObject private var translations: Translations
 
     @State private var text = ""
     @State private var meaning = ""
@@ -122,7 +146,7 @@ struct MyWordsView: View {
         let gloss = meaning.trimmingCharacters(in: .whitespacesAndNewlines)
         store.addOwnWord(word, translation: gloss,
                          context: sentence.trimmingCharacters(in: .whitespacesAndNewlines))
-        if gloss.isEmpty { phone.translateWaiting() }
+        if gloss.isEmpty { translations.translateWaiting(in: .kind(.own)) }
         text = ""
         meaning = ""
         sentence = ""

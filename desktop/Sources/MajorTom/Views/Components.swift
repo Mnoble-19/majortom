@@ -28,6 +28,16 @@ extension SourceKind {
         case .own: return Palette.Tint(fill: Palette.accentSoft, ink: Palette.accentText)
         }
     }
+
+    /// What one source of this kind is called.
+    var noun: String {
+        switch self {
+        case .show: return "episode"
+        case .call: return "conversation"
+        case .book: return "book"
+        case .own: return "list"
+        }
+    }
 }
 
 struct EmptyState: View {
@@ -173,6 +183,121 @@ struct Banner: View {
         .background(isFailure ? Palette.badSoft : Palette.goodSoft,
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .transition(.move(edge: .top).combined(with: .opacity))
+    }
+}
+
+/// "Translate 4" for the words in view that still have no meaning, whether
+/// they came from a call, the phone or anywhere else. Hidden when there are
+/// none; shows progress while it runs and what happened after.
+struct TranslateButton: View {
+    @EnvironmentObject private var store: Store
+    @EnvironmentObject private var translations: Translations
+    var scope: Scope = .all
+
+    var body: some View {
+        let waiting = store.untranslatedItems(in: scope).count
+
+        HStack(spacing: 12) {
+            if let outcome = translations.outcome, !translations.running {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(outcome.message)
+                        .font(.rounded(13, .medium))
+                        .foregroundStyle(outcome.isFailure ? Palette.warmText : Palette.goodText)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(3)
+                    if outcome.isFailure {
+                        SettingsLink { Text("Open Settings") }
+                            .font(.rounded(13, .semibold))
+                    }
+                }
+                .frame(maxWidth: 340, alignment: .trailing)
+            }
+            if translations.running {
+                ProgressView(value: Double(translations.done), total: Double(max(1, translations.total)))
+                    .frame(width: 80)
+                Text("Translating \(translations.done) of \(translations.total)")
+                    .font(.rounded(13, .semibold))
+                    .foregroundStyle(Palette.secondary)
+                    .monospacedDigit()
+            } else if waiting > 0 {
+                Button { translations.translateWaiting(in: scope) } label: {
+                    Label("Translate \(waiting)", systemImage: "character.book.closed.fill")
+                }
+                .buttonStyle(ProminentButtonStyle(fill: Palette.shows.fill, ink: Palette.shows.ink))
+                .help("Fill in a meaning for every word here that has none")
+            }
+        }
+    }
+}
+
+/// Back to the previous page. The toolbar has one too, but it is small and
+/// easy to miss next to a large page title.
+struct BackButton: View {
+    @Environment(\.dismiss) private var dismiss
+    var label = "Back"
+
+    var body: some View {
+        Button { dismiss() } label: {
+            Label(label, systemImage: "chevron.left")
+                .font(.rounded(14, .semibold))
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(Palette.card, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Palette.text)
+        .keyboardShortcut("[", modifiers: .command)
+    }
+}
+
+/// Asks before deleting a whole episode, conversation or book.
+private struct ConfirmSourceDeletion: ViewModifier {
+    @EnvironmentObject private var store: Store
+    let source: Source
+    @Binding var isPresented: Bool
+    let then: () -> Void
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("Delete this \(source.kind.noun)?", isPresented: $isPresented) {
+            Button("Delete \(source.itemCount) \(source.itemCount == 1 ? "word" : "words")", role: .destructive) {
+                store.removeSource(source)
+                then()
+            }
+        } message: {
+            Text("“\(source.title)” and everything saved from it leave the library for good.")
+        }
+    }
+}
+
+/// Asks for a new name for a source.
+private struct RenameSource: ViewModifier {
+    @EnvironmentObject private var store: Store
+    let source: Source
+    @Binding var isPresented: Bool
+    @State private var name = ""
+
+    func body(content: Content) -> some View {
+        content
+            .alert("Rename this \(source.kind.noun)", isPresented: $isPresented) {
+                TextField("Name", text: $name)
+                Button("Rename") { store.renameSource(source, to: name) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Leave it empty to go back to the original name.")
+            }
+            .onChange(of: isPresented) { _, shown in
+                if shown { name = source.title }
+            }
+    }
+}
+
+extension View {
+    func renaming(_ source: Source, isPresented: Binding<Bool>) -> some View {
+        modifier(RenameSource(source: source, isPresented: isPresented))
+    }
+
+    func confirmDeleting(_ source: Source, isPresented: Binding<Bool>, then: @escaping () -> Void = {}) -> some View {
+        modifier(ConfirmSourceDeletion(source: source, isPresented: isPresented, then: then))
     }
 }
 

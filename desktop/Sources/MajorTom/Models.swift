@@ -83,6 +83,8 @@ struct Item: Identifiable, Hashable {
     var translation: String
     var context: String
     var contextTranslation: String
+    /// Other German words for the same meaning, from the model.
+    var alternatives: [String]
     /// Playback seconds for video, offset for calls, page for books.
     var position: Double
     var starred: Bool
@@ -97,6 +99,14 @@ struct Item: Identifiable, Hashable {
         let total = Int(position)
         return String(format: "%d:%02d", total / 60, total % 60)
     }
+}
+
+/// Which words an action covers: the whole library, one kind of source, or
+/// one source.
+enum Scope: Equatable {
+    case all
+    case kind(SourceKind)
+    case source(Source)
 }
 
 /// The numbers the home screen is built from, read in one go.

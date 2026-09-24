@@ -4,8 +4,9 @@
 import AVFoundation
 import Foundation
 
-/// One call. Runs a recognizer on each audio track, keeps the transcript in
-/// memory only, and writes the words you pick to the database.
+/// One call. Transcribes the other person's side — the audio of whichever app
+/// the call is in — keeps the transcript in memory only, and writes the words
+/// you pick to the database.
 ///
 /// The transcript is deliberately not persisted anywhere — not to disk, not to
 /// the database. `end()` drops it. Only saved words outlive the session.
@@ -18,22 +19,25 @@ public final class Session: @unchecked Sendable {
     private let database: Database
     private var sourceID: Int64?
 
-    private var theirs: Transcriber?
-    private var mine: Transcriber?
-    #if os(macOS)
+    private var transcriber: Transcriber?
     private var tap: ProcessTapSource?
-    #endif
-    private var mic: MicSource?
-    private var relays: [Task<Void, Never>] = []
+    private var relay: Task<Void, Never>?
 
     private let lock = NSLock()
     private var lines: [Line] = []
-    private var volatileBySpeaker: [Speaker: String] = [:]
 
     /// Live transcript updates for the UI. Lines are append-only; volatile text
     /// is replaced as the recognizer revises it.
     public let events: AsyncStream<TranscriptEvent>
     private let emit: AsyncStream<TranscriptEvent>.Continuation
+
+    public enum Failure: Error, CustomStringConvertible {
+        case nothingPlaying
+
+        public var description: String {
+            "No app is playing audio. Start the call first, then press Start."
+        }
+    }
 
     public init(person: String, locale: Locale = Locale(identifier: "de-DE"), database: Database) {
         self.person = person
@@ -52,10 +56,6 @@ public final class Session: @unchecked Sendable {
     /// translation after the fact without re-deriving it.
     public var databaseSourceID: Int64? { sourceID }
 
-    public func volatileText(for speaker: Speaker) -> String {
-        lock.withLock { volatileBySpeaker[speaker] ?? "" }
-    }
-
     /// Where the other person's voice comes from.
     public enum TheirAudio {
         /// Whatever app is playing audio when the session starts. The normal
@@ -64,63 +64,37 @@ public final class Session: @unchecked Sendable {
         case whicheverAppIsPlaying
         /// A named app, for when several are making noise at once.
         case app(String)
-        /// Mic only — in person, or a phone on speaker.
-        case none
     }
 
     public func start(their source: TheirAudio = .whicheverAppIsPlaying) async throws {
-        try await Transcriber.ensureModel(locale: locale)
-
-        let title = Session.title(person: person, at: startedAt)
-        sourceID = try database.upsertSource(
-            title: title, person: person, sessionID: sessionID, origin: "mac", createdAt: startedAt)
-
-        #if os(macOS)
-        let callProcesses: [AudioProcess]
+        let processes: [AudioProcess]
         switch source {
-        case .whicheverAppIsPlaying: callProcesses = AudioProcesses.likelyCall()
-        case .app(let name): callProcesses = AudioProcesses.group(name)
-        case .none: callProcesses = []
+        case .whicheverAppIsPlaying: processes = AudioProcesses.likelyCall()
+        case .app(let name): processes = AudioProcesses.group(name)
         }
+        guard !processes.isEmpty else { throw Failure.nothingPlaying }
 
-        if !callProcesses.isEmpty {
-            let theirs = Transcriber(locale: locale, speaker: .them)
-            try await theirs.start()
-            let tap = try ProcessTapSource(processes: callProcesses)
-            try tap.start { buffer, _ in theirs.append(buffer) }
-            self.theirs = theirs
-            self.tap = tap
-            relay(theirs)
-        }
-        #endif
+        try await Transcriber.ensureModel(locale: locale)
+        sourceID = try database.upsertSource(
+            title: Session.title(person: person, at: startedAt),
+            person: person, sessionID: sessionID, origin: "mac", createdAt: startedAt)
 
-        let mine = Transcriber(locale: locale, speaker: .me)
-        try await mine.start()
-        let mic = MicSource()
-        try mic.start { buffer, time in mine.append(buffer, at: time) }
-        self.mine = mine
-        self.mic = mic
-        relay(mine)
-    }
+        let transcriber = Transcriber(locale: locale)
+        try await transcriber.start()
+        let tap = try ProcessTapSource(processes: processes)
+        try tap.start { buffer, _ in transcriber.append(buffer) }
+        self.transcriber = transcriber
+        self.tap = tap
 
-    /// Both recognizers feed one merged stream, tagged by track.
-    private func relay(_ transcriber: Transcriber) {
-        let task = Task { [weak self] in
+        relay = Task { [weak self] in
             for await event in transcriber.events {
                 guard let self else { return }
-                switch event {
-                case .line(let line):
-                    self.lock.withLock {
-                        self.lines.append(line)
-                        self.volatileBySpeaker[line.speaker] = ""
-                    }
-                case .volatile(let speaker, let text):
-                    self.lock.withLock { self.volatileBySpeaker[speaker] = text }
+                if case .line(let line) = event {
+                    self.lock.withLock { self.lines.append(line) }
                 }
                 self.emit.yield(event)
             }
         }
-        relays.append(task)
     }
 
     /// Saves one word with the sentence it came from. `translation` may be
@@ -155,26 +129,13 @@ public final class Session: @unchecked Sendable {
     /// Stops capture and drops the transcript. Saved words are already in the
     /// database by this point; nothing here writes anything.
     public func end() async {
-        #if os(macOS)
         tap?.stop()
-        #endif
-        mic?.stop()
-        try? await theirs?.finish()
-        try? await mine?.finish()
-        for relay in relays { relay.cancel() }
-        relays.removeAll()
+        try? await transcriber?.finish()
+        relay?.cancel()
         emit.finish()
-
-        lock.withLock {
-            lines.removeAll()
-            volatileBySpeaker.removeAll()
-        }
-        theirs = nil
-        mine = nil
-        mic = nil
-        #if os(macOS)
+        lock.withLock { lines.removeAll() }
+        transcriber = nil
         tap = nil
-        #endif
     }
 
     static func title(person: String, at date: Date) -> String {

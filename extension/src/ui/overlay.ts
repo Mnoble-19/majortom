@@ -58,10 +58,9 @@ const STYLE = `
 
 .line {
   pointer-events: auto; text-align: center; max-width: 100%;
-  padding: .2em .65em; border-radius: 16px;
-  background: rgba(0,0,0,.66);
-  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-  line-height: 1.38; text-wrap: balance;
+  padding: 0 .4em; line-height: 1.32; text-wrap: balance;
+  /* No box behind the text: a tight dark halo keeps it readable on any frame. */
+  text-shadow: 0 0 2px rgba(0,0,0,.95), 0 1px 3px rgba(0,0,0,.9), 0 0 14px rgba(0,0,0,.55);
 }
 .line:empty { display: none; }
 /* Re-triggered on every cue change so lines arrive rather than snap. */
@@ -71,17 +70,16 @@ const STYLE = `
 
 .primary { font-size: var(--mt-size); font-weight: 650; color: #fff; letter-spacing: .002em; }
 .secondary {
-  font-size: calc(var(--mt-size) * .68); color: #d3d5dc; font-weight: 500;
-  background: rgba(0,0,0,.52);
+  font-size: calc(var(--mt-size) * .72); color: #e4e5ea; font-weight: 550;
 }
 /* "Try first" mode: the translation is there, but you have to reach for it. */
 .secondary.blurred { filter: blur(7px); transition: filter .12s ease; cursor: pointer; }
 .secondary.blurred:hover { filter: none; }
 
-.w { cursor: pointer; border-radius: .3em; padding: 0 .12em; transition: background .1s, color .1s; }
+.w { cursor: pointer; border-radius: .25em; padding: 0 .04em; transition: background .1s, color .1s; }
 .w:hover { background: rgba(255,255,255,.2); }
-.w.saved { background: var(--highlight); color: var(--on-highlight); }
-.w.active { background: #fff; color: #1c1c1e; }
+.w.saved { background: var(--highlight); color: var(--on-highlight); text-shadow: none; }
+.w.active { background: #fff; color: #1c1c1e; text-shadow: none; }
 
 .status {
   pointer-events: none; font-size: 12px; font-weight: 600; color: #e6e7eb;
@@ -308,7 +306,7 @@ export class Overlay {
     /** Type size tracks the player's width, so it reads the same at any size. */
     private scale(): void {
         const w = this.parent?.clientWidth || 800;
-        const px = Math.max(15, Math.min(46, w * 0.0265)) * (this.settings.fontScale || 1);
+        const px = Math.max(12, Math.min(37, w * 0.0212)) * (this.settings.fontScale || 1);
         this.root.style.setProperty('--mt-size', `${px.toFixed(1)}px`);
         this.root.style.bottom = `${this.settings.offsetPct + (this.lifted ? 9 : 0)}%`;
     }

@@ -3,7 +3,6 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var store: Store
-    @EnvironmentObject private var phone: PhoneSync
     let open: (SidebarItem) -> Void
     let openSource: (Source) -> Void
 
@@ -16,10 +15,6 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header(stats)
-
-                if let outcome = phone.outcome {
-                    Banner(message: outcome.message, isFailure: outcome.isFailure) { phone.dismiss() }
-                }
 
                 HStack(alignment: .top, spacing: 20) {
                     reviewTile(stats)
@@ -34,7 +29,7 @@ struct HomeView: View {
                     }
                 }
 
-                fresh(stats)
+                fresh()
             }
             .padding(32)
         }
@@ -46,6 +41,7 @@ struct HomeView: View {
         HStack(alignment: .center, spacing: 14) {
             Text(greeting).font(.rounded(34, .heavy))
             Spacer()
+            TranslateButton()
             if stats.streak >= 2 {
                 Label("\(stats.streak) days in a row", systemImage: "flame.fill")
                     .font(.rounded(14, .bold))
@@ -153,7 +149,7 @@ struct HomeView: View {
     }
 
     @ViewBuilder
-    private func fresh(_ stats: Stats) -> some View {
+    private func fresh() -> some View {
         let recent = store.recentItems(limit: 8)
         if !recent.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
@@ -178,34 +174,9 @@ struct HomeView: View {
                         .buttonStyle(.plain)
                         .help("From \(item.sourceTitle)")
                     }
-                    if stats.untranslated > 0 {
-                        translateChip(stats.untranslated)
-                    }
                 }
             }
         }
-    }
-
-    private func translateChip(_ count: Int) -> some View {
-        Button(action: phone.translateWaiting) {
-            HStack(spacing: 8) {
-                if phone.translating {
-                    ProgressView().controlSize(.small)
-                    Text("Translating…")
-                } else {
-                    Image(systemName: "character.book.closed.fill")
-                    Text("Translate \(count) waiting")
-                }
-            }
-            .font(.rounded(14, .bold))
-            .foregroundStyle(Palette.shows.ink)
-            .padding(.horizontal, 14)
-            .frame(height: 38)
-            .background(Palette.shows.fill, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(phone.translating)
-        .help("Fill in translations for anything saved without one, from any source")
     }
 }
 

@@ -126,6 +126,10 @@ public final class Database: @unchecked Sendable {
         if !columnExists("item", "removed_at") {
             try exec("ALTER TABLE item ADD COLUMN removed_at TEXT;")
         }
+        // German alternatives from the model, one per line.
+        if !columnExists("item", "alternatives") {
+            try exec("ALTER TABLE item ADD COLUMN alternatives TEXT NOT NULL DEFAULT '';")
+        }
     }
 
     private func columnExists(_ table: String, _ column: String) -> Bool {
@@ -151,6 +155,29 @@ public final class Database: @unchecked Sendable {
             throw DatabaseError.query("own-words source upsert returned no id")
         }
         return id
+    }
+
+    /// Everyone you have talked to, most recent first.
+    public func people() throws -> [String] {
+        try query(
+            "SELECT site, MAX(created_at) FROM source WHERE kind = 'call' AND site != '' GROUP BY site ORDER BY 2 DESC;"
+        ) { $0.string(0) }
+            .reduce(into: [String]()) { names, name in
+                if !names.contains(where: { Self.samePerson($0, name) }) { names.append(name) }
+            }
+    }
+
+    /// The spelling already on file for this person, so "lena " next week
+    /// joins last week's calls with "Lena" instead of starting a new person.
+    public func canonicalPerson(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (try? people())?.first { Self.samePerson($0, trimmed) } ?? trimmed
+    }
+
+    private static func samePerson(_ a: String, _ b: String) -> Bool {
+        a.trimmingCharacters(in: .whitespacesAndNewlines)
+            .compare(b.trimmingCharacters(in: .whitespacesAndNewlines),
+                     options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
     }
 
     /// One call or one in-person session. `url` carries a stable UUID so that
@@ -198,13 +225,19 @@ public final class Database: @unchecked Sendable {
             VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
             ON CONFLICT(source_id, kind, text) DO UPDATE SET
                 translation = COALESCE(NULLIF(excluded.translation, ''), item.translation),
-                context = excluded.context,
+                context = COALESCE(NULLIF(item.context, ''), excluded.context),
                 context_translation = COALESCE(
                     NULLIF(excluded.context_translation, ''), item.context_translation);
             """,
             [sourceID, kind, text, translation, context, contextTranslation, position,
              ISO8601.string(createdAt)]
         )
+    }
+
+    /// Replaces the sentence saved with a word, for when you want to trim
+    /// what was kept of the conversation.
+    public func setContext(sourceID: Int64, text: String, context: String) throws {
+        try run("UPDATE item SET context = ? WHERE source_id = ? AND text = ?;", [context, sourceID, text])
     }
 
     public func deleteItem(sourceID: Int64, text: String) throws {
@@ -230,10 +263,12 @@ public final class Database: @unchecked Sendable {
         ) { ($0.int(0), $0.string(1), $0.string(2)) }
     }
 
-    public func setTranslation(itemID: Int64, translation: String, contextTranslation: String) throws {
+    public func setTranslation(
+        itemID: Int64, translation: String, contextTranslation: String, alternatives: [String] = []
+    ) throws {
         try run(
-            "UPDATE item SET translation = ?, context_translation = ? WHERE id = ?;",
-            [translation, contextTranslation, itemID]
+            "UPDATE item SET translation = ?, context_translation = ?, alternatives = ? WHERE id = ?;",
+            [translation, contextTranslation, alternatives.joined(separator: "\n"), itemID]
         )
     }
 

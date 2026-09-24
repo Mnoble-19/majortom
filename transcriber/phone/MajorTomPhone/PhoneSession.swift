@@ -4,9 +4,6 @@ import Observation
 
 /// An in-person conversation. Much smaller than the Mac's `Session`: one mic,
 /// one recognizer, no database, no translation.
-///
-/// There is only one audio track here, so unlike on a call there is no free
-/// speaker labelling — everything in the room arrives on the same microphone.
 @MainActor
 @Observable
 final class PhoneSession {
@@ -32,6 +29,19 @@ final class PhoneSession {
     private var transcriber: Transcriber?
     private var mic: MicSource?
     private var pump: Task<Void, Never>?
+
+    /// People you have talked to, newest first — names only — so the next
+    /// conversation with them is a tap, and the Mac files it with the last.
+    static var recentPeople: [String] {
+        UserDefaults.standard.stringArray(forKey: "recentPeople") ?? []
+    }
+
+    private static func remember(_ person: String) {
+        let name = person.trimmingCharacters(in: .whitespacesAndNewlines)
+        var people = recentPeople.filter { $0.caseInsensitiveCompare(name) != .orderedSame }
+        people.insert(name, at: 0)
+        UserDefaults.standard.set(Array(people.prefix(8)), forKey: "recentPeople")
+    }
 
     enum ModelState: Equatable {
         case unknown
@@ -69,11 +79,12 @@ final class PhoneSession {
 
         sessionID = UUID().uuidString
         startedAt = Date()
+        Self.remember(person)
         lines = []
         volatile = ""
 
         do {
-            let transcriber = Transcriber(locale: Locale(identifier: localeIdentifier), speaker: .them)
+            let transcriber = Transcriber(locale: Locale(identifier: localeIdentifier))
             try await transcriber.start()
             let mic = MicSource()
             try mic.start { buffer, time in transcriber.append(buffer, at: time) }
@@ -88,7 +99,7 @@ final class PhoneSession {
                     case .line(let line):
                         self.lines.append(line)
                         self.volatile = ""
-                    case .volatile(_, let text):
+                    case .volatile(let text):
                         self.volatile = text
                     }
                 }

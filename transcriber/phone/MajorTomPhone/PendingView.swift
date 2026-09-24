@@ -5,6 +5,7 @@ import SwiftUI
 struct PendingView: View {
     let pending: PendingWords
     let sync: SyncModel
+    @State private var deletingSession: StoredSession?
 
     var body: some View {
         List {
@@ -36,8 +37,14 @@ struct PendingView: View {
                         }
                     }
                 } header: {
-                    Text("\(session.person) · \(session.startedAt.formatted(.relative(presentation: .named)))")
-                        .font(.rounded(13, .bold))
+                    HStack {
+                        Text("\(session.person) · \(session.startedAt.formatted(.relative(presentation: .named)))")
+                            .font(.rounded(13, .bold))
+                        Spacer()
+                        Button("Delete all", role: .destructive) { deletingSession = session }
+                            .font(.rounded(13, .semibold))
+                            .textCase(nil)
+                    }
                 }
                 .listRowBackground(Palette.card)
             }
@@ -45,6 +52,15 @@ struct PendingView: View {
         .scrollContentBackground(.hidden)
         .background(Palette.background)
         .navigationTitle("Waiting")
+        .confirmationDialog(
+            "Delete the \(deletingSession?.words.count ?? 0) words from \(deletingSession?.person ?? "")?",
+            isPresented: Binding(get: { deletingSession != nil }, set: { if !$0 { deletingSession = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let session = deletingSession { pending.removeSession(session.id) }
+            }
+        }
         .onAppear { sync.startLooking() }
         .onDisappear { sync.stopLooking() }
     }

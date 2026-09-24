@@ -15,8 +15,9 @@ final class Store: ObservableObject {
 
     /// Columns every item query selects, in the order `item(_:)` reads them.
     private static let itemColumns = """
-        i.id, i.source_id, s.kind, s.title, s.url, i.kind, i.text, i.translation,
-        i.context, i.context_translation, i.position, i.starred, i.status, i.created_at
+        i.id, i.source_id, s.kind, COALESCE(NULLIF(s.display_title, ''), s.title), s.url, i.kind, i.text, i.translation,
+        i.context, i.context_translation, i.position, i.starred, i.status, i.created_at,
+        i.alternatives
         """
 
     init() {
@@ -67,6 +68,18 @@ final class Store: ObservableObject {
         queryItems("ORDER BY i.created_at DESC")
     }
 
+    /// Words with no meaning yet.
+    func untranslatedItems(in scope: Scope = .all) -> [Item] {
+        switch scope {
+        case .all:
+            return queryItems("WHERE i.translation = '' ORDER BY i.id")
+        case .kind(let kind):
+            return queryItems("WHERE i.translation = '' AND s.kind = ? ORDER BY i.id", [kind.rawValue])
+        case .source(let source):
+            return queryItems("WHERE i.translation = '' AND i.source_id = ? ORDER BY i.id", [source.id])
+        }
+    }
+
     func recentItems(limit: Int) -> [Item] {
         queryItems("ORDER BY i.created_at DESC LIMIT ?", [limit])
     }
@@ -110,6 +123,7 @@ final class Store: ObservableObject {
             translation: r.string(7),
             context: r.string(8),
             contextTranslation: r.string(9),
+            alternatives: r.string(14).split(separator: "\n").map(String.init),
             position: r.double(10),
             starred: r.bool(11),
             status: ItemStatus(rawValue: r.string(12)) ?? .learning,
@@ -125,6 +139,39 @@ final class Store: ObservableObject {
     func setLearned(_ item: Item, _ learned: Bool) {
         write("UPDATE item SET status = ?, review_streak = 0, review_due = NULL WHERE id = ?",
               [learned ? ItemStatus.learned.rawValue : ItemStatus.learning.rawValue, item.id])
+    }
+
+    /// A meaning you typed in, perhaps what the other person told you.
+    func setMeaning(_ item: Item, _ meaning: String) {
+        write("UPDATE item SET translation = ? WHERE id = ?", [meaning, item.id])
+    }
+
+    /// The sentence kept with a word, trimmed or corrected by you.
+    func setContext(_ item: Item, _ context: String) {
+        write("UPDATE item SET context = ? WHERE id = ?", [context, item.id])
+    }
+
+    /// What a translator came back with. Replaces the meaning; keeps an
+    /// existing sentence translation if this one has none.
+    func applyTranslation(_ meaning: String, sentence: String, alternatives: [String], to item: Item) {
+        write("""
+            UPDATE item SET translation = ?,
+                context_translation = COALESCE(NULLIF(?, ''), context_translation),
+                alternatives = ?
+            WHERE id = ?
+            """, [meaning, sentence, alternatives.joined(separator: "\n"), item.id])
+    }
+
+    /// Only the name shown here; an empty name goes back to the original.
+    func renameSource(_ source: Source, to title: String) {
+        write("UPDATE source SET display_title = ? WHERE id = ?",
+              [title.trimmingCharacters(in: .whitespacesAndNewlines), source.id])
+    }
+
+    /// A whole episode, conversation or book: every word saved from it.
+    func removeSource(_ source: Source) {
+        write("UPDATE item SET removed_at = ? WHERE source_id = ? AND removed_at IS NULL",
+              [ISO8601.string(), source.id])
     }
 
     func remove(_ item: Item) {
@@ -213,7 +260,7 @@ final class Store: ObservableObject {
         guard let db else { return }
         do {
             sources = try db.query("""
-                SELECT s.id, s.kind, s.title, s.site, s.url, s.created_at,
+                SELECT s.id, s.kind, COALESCE(NULLIF(s.display_title, ''), s.title), s.site, s.url, s.created_at,
                        SUM(i.kind = 'word'), SUM(i.kind = 'phrase'),
                        MAX(i.created_at), SUM(i.status = 'learned')
                 FROM source s

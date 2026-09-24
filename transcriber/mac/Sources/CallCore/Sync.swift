@@ -93,11 +93,12 @@ public struct SyncImporter: Sendable {
     }
 
     public func importSession(_ payload: SyncPayload) throws -> Int64 {
+        let person = database.canonicalPerson(payload.person)
         let sourceID = payload.isOwnWords
             ? try database.ownWordsSource()
             : try database.upsertSource(
-                title: Session.title(person: payload.person, at: payload.startedAt),
-                person: payload.person,
+                title: Session.title(person: person, at: payload.startedAt),
+                person: person,
                 sessionID: payload.sessionID,
                 origin: "phone",
                 createdAt: payload.startedAt)
@@ -112,25 +113,6 @@ public struct SyncImporter: Sendable {
                 createdAt: payload.startedAt)
         }
         return sourceID
-    }
-
-    /// Translates everything in a source that still has none. Runs after the
-    /// import has already been acknowledged.
-    @discardableResult
-    public func fillTranslations(sourceID: Int64, translator: Translator = Translator()) async -> Int {
-        guard let pending = try? database.untranslatedItems(sourceID: sourceID) else { return 0 }
-        var filled = 0
-        for item in pending {
-            var best: Gloss?
-            for await gloss in translator.glosses(word: item.text, sentence: item.context) {
-                best = gloss
-            }
-            guard let best else { continue }
-            try? database.setTranslation(
-                itemID: item.id, translation: best.meaning, contextTranslation: best.sentence)
-            filled += 1
-        }
-        return filled
     }
 }
 
@@ -147,20 +129,13 @@ public final class SyncServer: @unchecked Sendable {
 
     private let importer: SyncImporter
     private var listener: NWListener?
+    /// The library app translates what arrives; this only receives it.
     private let onImport: @Sendable (Report) -> Void
-    /// Resolved per import rather than held, so changing the endpoint in
-    /// Settings takes effect without restarting the listener.
-    private let makeTranslator: @Sendable () -> Translator
 
     public private(set) var port: UInt16?
 
-    public init(
-        database: Database,
-        translator: @escaping @Sendable () -> Translator = { Translator() },
-        onImport: @escaping @Sendable (Report) -> Void
-    ) {
+    public init(database: Database, onImport: @escaping @Sendable (Report) -> Void) {
         self.importer = SyncImporter(database: database)
-        self.makeTranslator = translator
         self.onImport = onImport
     }
 
@@ -238,15 +213,9 @@ public final class SyncServer: @unchecked Sendable {
             connection.cancel()
         })
 
-        // Acknowledge first, translate after: the phone should not sit waiting
-        // on a model that takes ten seconds a word.
-        if let imported {
-            onImport(imported)
-            Task.detached { [importer, makeTranslator] in
-                await importer.fillTranslations(
-                    sourceID: imported.sourceID, translator: makeTranslator())
-            }
-        }
+        // Acknowledged before anything is translated: the phone should not sit
+        // waiting on a model that takes ten seconds a word.
+        if let imported { onImport(imported) }
     }
 }
 #endif

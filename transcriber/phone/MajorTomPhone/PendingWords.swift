@@ -70,9 +70,10 @@ final class PendingWords {
         save()
     }
 
-    /// Only drops what the Mac actually acknowledged, so a partial sync does
-    /// not quietly lose the rest.
-    func clearSynced(_ sessionID: String) {
+    /// Drops a whole session: after the Mac acknowledged it, or on request.
+    /// Sending clears one session at a time, so a partial sync does not
+    /// quietly lose the rest.
+    func removeSession(_ sessionID: String) {
         sessions.removeAll { $0.id == sessionID }
         save()
     }

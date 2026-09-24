@@ -152,7 +152,7 @@ def import_entries(conn: sqlite3.Connection, entries: list[dict]) -> tuple[int, 
                VALUES (?, ?, ?, ?, ?, '', ?, 0, ?)
                ON CONFLICT(source_id, kind, text) DO UPDATE SET
                    translation = COALESCE(NULLIF(excluded.translation, ''), item.translation),
-                   context     = excluded.context,
+                   context     = COALESCE(NULLIF(item.context, ''), excluded.context),
                    position    = excluded.position""",
             (
                 sources_seen[book],

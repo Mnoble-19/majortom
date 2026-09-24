@@ -22,14 +22,21 @@ struct MajorTomApp: App {
     /// so the listener has to live as long as the app, not as long as a tab.
     @StateObject private var phone: PhoneSync
     @StateObject private var tablet: Syncer
+    @StateObject private var translations: Translations
     @AppStorage("appearance") private var appearance = Appearance.system
 
     init() {
         // Cheap, idempotent, and self-healing if the app is moved.
         HostInstaller.register()
         let store = Store()
+        let translations = Translations(store: store)
         _store = StateObject(wrappedValue: store)
-        _phone = StateObject(wrappedValue: PhoneSync { store.reload() })
+        _translations = StateObject(wrappedValue: translations)
+        // Words that arrive without a meaning get one straight away.
+        _phone = StateObject(wrappedValue: PhoneSync {
+            store.reload()
+            translations.translateWaiting()
+        })
         _tablet = StateObject(wrappedValue: Syncer { store.reload() })
     }
 
@@ -39,6 +46,7 @@ struct MajorTomApp: App {
                 .environmentObject(store)
                 .environmentObject(phone)
                 .environmentObject(tablet)
+                .environmentObject(translations)
                 .frame(minWidth: 980, minHeight: 640)
                 .tint(Palette.accent)
                 .preferredColorScheme(appearance.colorScheme)
