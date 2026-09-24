@@ -7,7 +7,6 @@ import SwiftUI
 struct WordBrowser<Header: View>: View {
     @EnvironmentObject private var store: Store
     let items: [Item]
-    var showsSource = false
     @ViewBuilder let header: () -> Header
 
     @State private var filter: Filter = .all
@@ -66,7 +65,7 @@ struct WordBrowser<Header: View>: View {
                 } else {
                     LazyVGrid(columns: columns, spacing: 14) {
                         ForEach(shown) { item in
-                            WordCard(item: item, showsSource: showsSource, selected: item.id == selection)
+                            WordCard(item: item, selected: item.id == selection)
                                 .onTapGesture { selection = item.id == selection ? nil : item.id }
                         }
                     }
@@ -79,7 +78,7 @@ struct WordBrowser<Header: View>: View {
         .onDeleteCommand { confirmingRemoval = selected }
         .inspector(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selection = nil } })) {
             if let item = selected {
-                WordInspector(item: item) { confirmingRemoval = item }
+                WordInspector(item: item, onClose: { selection = nil }) { confirmingRemoval = item }
                     .id(item.id)
                     .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
             }
@@ -107,7 +106,6 @@ struct WordBrowser<Header: View>: View {
 
 private struct WordCard: View {
     let item: Item
-    let showsSource: Bool
     let selected: Bool
     @State private var hovering = false
 
@@ -140,7 +138,7 @@ private struct WordCard: View {
 
             Spacer(minLength: 8)
 
-            if let tag = showsSource ? item.sourceTitle : item.positionLabel {
+            if let tag = item.positionLabel {
                 Text(tag)
                     .font(.rounded(12, .bold))
                     .foregroundStyle(Palette.secondary)
@@ -168,6 +166,7 @@ private struct WordInspector: View {
     @EnvironmentObject private var store: Store
     @EnvironmentObject private var translations: Translations
     let item: Item
+    let onClose: () -> Void
     let onRemove: () -> Void
 
     @State private var meaning = ""
@@ -193,6 +192,15 @@ private struct WordInspector: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(item.starred ? "Unstar" : "Star")
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Palette.secondary)
+                            .frame(width: 36, height: 36)
+                            .background(Palette.raised, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close")
                 }
 
                 meaningSection
