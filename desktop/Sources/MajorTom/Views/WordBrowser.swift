@@ -1,3 +1,4 @@
+import CallCore
 import MajorTomStyle
 import SwiftUI
 
@@ -79,6 +80,7 @@ struct WordBrowser<Header: View>: View {
         .inspector(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selection = nil } })) {
             if let item = selected {
                 WordInspector(item: item) { confirmingRemoval = item }
+                    .id(item.id)
                     .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
             }
         }
@@ -164,91 +166,231 @@ private struct WordCard: View {
 
 private struct WordInspector: View {
     @EnvironmentObject private var store: Store
+    @EnvironmentObject private var translations: Translations
     let item: Item
     let onRemove: () -> Void
 
+    @State private var meaning = ""
+    @FocusState private var editingMeaning: Bool
+    @State private var checking = false
+    @State private var suggestion: Gloss?
+    @State private var checkFailed: String?
+
     var body: some View {
         ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(item.text)
-                                .font(.rounded(32, .heavy))
-                                .textSelection(.enabled)
-                            Text(item.translation.isEmpty ? "No translation yet" : item.translation)
-                                .font(.rounded(19, .semibold))
-                                .foregroundStyle(item.translation.isEmpty ? Palette.tertiary : Palette.accentText)
-                        }
-                        Spacer()
-                        Button { store.toggleStar(item) } label: {
-                            Image(systemName: item.starred ? "star.fill" : "star")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(item.starred ? Palette.warm : Palette.secondary)
-                                .frame(width: 36, height: 36)
-                                .background(Palette.raised, in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(item.starred ? "Unstar" : "Star")
+            VStack(alignment: .leading, spacing: 24) {
+                HStack(alignment: .top) {
+                    Text(item.text)
+                        .font(.rounded(32, .heavy))
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button { store.toggleStar(item) } label: {
+                        Image(systemName: item.starred ? "star.fill" : "star")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(item.starred ? Palette.warm : Palette.secondary)
+                            .frame(width: 36, height: 36)
+                            .background(Palette.raised, in: Circle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(item.starred ? "Unstar" : "Star")
+                }
 
-                    if !item.context.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("In context").font(.rounded(13, .bold)).foregroundStyle(Palette.secondary)
-                            ContextSentence(sentence: item.context, word: item.text, size: 18)
-                            if !item.contextTranslation.isEmpty {
-                                Text(item.contextTranslation)
-                                    .font(.rounded(15))
-                                    .foregroundStyle(Palette.secondary)
+                meaningSection
+
+                if !item.alternatives.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Also said").font(.rounded(13, .bold)).foregroundStyle(Palette.secondary)
+                        FlowLayout(spacing: 8, lineSpacing: 8) {
+                            ForEach(item.alternatives, id: \.self) { word in
+                                Text(word)
+                                    .font(.rounded(15, .semibold))
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 32)
+                                    .background(Palette.raised, in: Capsule())
                                     .textSelection(.enabled)
                             }
                         }
                     }
+                }
 
-                    HStack(spacing: 10) {
-                        KindBadge(kind: item.sourceKind, size: 32)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(item.sourceTitle).font(.rounded(14, .semibold)).lineLimit(2)
-                            Text([item.positionLabel, "saved \(item.createdAt.relativeDay.lowercased())"]
-                                .compactMap { $0 }.joined(separator: " · "))
-                                .font(.rounded(12))
+                if !item.context.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("In context").font(.rounded(13, .bold)).foregroundStyle(Palette.secondary)
+                        ContextSentence(sentence: item.context, word: item.text, size: 18)
+                        if !item.contextTranslation.isEmpty {
+                            Text(item.contextTranslation)
+                                .font(.rounded(15))
                                 .foregroundStyle(Palette.secondary)
+                                .textSelection(.enabled)
                         }
-                        Spacer()
-                        if let url = watchURL {
-                            Link(destination: url) { Image(systemName: "arrow.up.right") }
-                                .help("Open where you saved it")
-                        }
-                    }
-
-                    VStack(spacing: 10) {
-                        Button(item.status == .learned ? "Move back to learning" : "Mark as learned") {
-                            store.setLearned(item, item.status != .learned)
-                        }
-                        .buttonStyle(item.status == .learned
-                                     ? ProminentButtonStyle(fill: Palette.raised, ink: Palette.text)
-                                     : ProminentButtonStyle(fill: Palette.good, ink: .white))
-                        .frame(maxWidth: .infinity)
-
-                        Button("Delete word", role: .destructive, action: onRemove)
-                            .buttonStyle(.plain)
-                            .font(.rounded(14, .semibold))
-                            .foregroundStyle(Palette.badText)
                     }
                 }
-                .padding(22)
+
+                HStack(spacing: 10) {
+                    KindBadge(kind: item.sourceKind, size: 32)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.sourceTitle).font(.rounded(14, .semibold)).lineLimit(2)
+                        Text([item.positionLabel, "saved \(item.createdAt.relativeDay.lowercased())"]
+                            .compactMap { $0 }.joined(separator: " · "))
+                            .font(.rounded(12))
+                            .foregroundStyle(Palette.secondary)
+                    }
+                    Spacer()
+                    if let url = watchURL {
+                        Link(destination: url) { Image(systemName: "arrow.up.right") }
+                            .help("Open where you saved it")
+                    }
+                }
+
+                VStack(spacing: 10) {
+                    Button(item.status == .learned ? "Move back to learning" : "Mark as learned") {
+                        store.setLearned(item, item.status != .learned)
+                    }
+                    .buttonStyle(item.status == .learned
+                                 ? ProminentButtonStyle(fill: Palette.raised, ink: Palette.text)
+                                 : ProminentButtonStyle(fill: Palette.good, ink: .white))
+                    .frame(maxWidth: .infinity)
+
+                    Button("Delete word", role: .destructive, action: onRemove)
+                        .buttonStyle(.plain)
+                        .font(.rounded(14, .semibold))
+                        .foregroundStyle(Palette.badText)
+                }
+            }
+            .padding(22)
         }
         .background(Palette.card)
+        .onAppear { meaning = item.translation }
+        .onChange(of: item.translation) { _, new in
+            if !editingMeaning { meaning = new }
+        }
+        .onChange(of: editingMeaning) { _, editing in
+            if !editing { saveMeaning() }
+        }
+    }
+
+    /// Typed in by you — what the other person told you, say — or filled in by
+    /// a translator. Either way it can be checked against the model.
+    private var meaningSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Meaning").font(.rounded(13, .bold)).foregroundStyle(Palette.secondary)
+            TextField("Type it, or ask the model", text: $meaning, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.rounded(19, .semibold))
+                .foregroundStyle(Palette.accentText)
+                .padding(12)
+                .background(Palette.raised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .focused($editingMeaning)
+                .onSubmit(saveMeaning)
+
+            if let suggestion {
+                SuggestionCard(gloss: suggestion, agrees: agrees(suggestion)) {
+                    store.applyTranslation(suggestion.meaning, sentence: suggestion.sentence,
+                                           alternatives: suggestion.alternatives, to: item)
+                    meaning = suggestion.meaning
+                    self.suggestion = nil
+                } onKeep: {
+                    // Keep your meaning, but take the extras the model offered.
+                    store.applyTranslation(item.translation, sentence: suggestion.sentence,
+                                           alternatives: suggestion.alternatives, to: item)
+                    self.suggestion = nil
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button(action: check) {
+                    HStack(spacing: 6) {
+                        if checking { ProgressView().controlSize(.small) }
+                        Text(item.translation.isEmpty ? "Ask the model" : "Check with the model")
+                    }
+                }
+                .buttonStyle(ProminentButtonStyle(fill: Palette.accentSoft, ink: Palette.accentText))
+                .disabled(checking)
+                if let checkFailed {
+                    Text(checkFailed)
+                        .font(.rounded(12))
+                        .foregroundStyle(Palette.warmText)
+                        .lineLimit(3)
+                }
+            }
+        }
+    }
+
+    private func saveMeaning() {
+        let trimmed = meaning.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != item.translation else { return }
+        store.setMeaning(item, trimmed)
+    }
+
+    private func agrees(_ gloss: Gloss) -> Bool {
+        gloss.meaning.localizedCaseInsensitiveCompare(item.translation) == .orderedSame
+    }
+
+    private func check() {
+        saveMeaning()
+        checking = true
+        checkFailed = nil
+        suggestion = nil
+        Task {
+            defer { checking = false }
+            do {
+                let gloss = try await translations.check(item)
+                if item.translation.isEmpty {
+                    // Nothing of yours to compare against: take it.
+                    store.applyTranslation(gloss.meaning, sentence: gloss.sentence,
+                                           alternatives: gloss.alternatives, to: item)
+                    meaning = gloss.meaning
+                } else {
+                    suggestion = gloss
+                }
+            } catch {
+                checkFailed = "\(error)"
+            }
+        }
     }
 
     /// The episode, jumping to the moment on YouTube, which takes a time in
     /// the URL; other sites just open the episode.
     private var watchURL: URL? {
         guard item.sourceKind == .show, var components = URLComponents(string: item.sourceURL),
-                  components.scheme?.hasPrefix("http") == true else { return nil }
+              components.scheme?.hasPrefix("http") == true else { return nil }
         if components.host?.contains("youtube") == true, item.position > 0 {
-                components.queryItems = (components.queryItems ?? []).filter { $0.name != "t" }
-                    + [URLQueryItem(name: "t", value: "\(Int(item.position))s")]
+            components.queryItems = (components.queryItems ?? []).filter { $0.name != "t" }
+                + [URLQueryItem(name: "t", value: "\(Int(item.position))s")]
         }
         return components.url
+    }
+}
+
+/// What the model says, set against the meaning already there.
+private struct SuggestionCard: View {
+    let gloss: Gloss
+    let agrees: Bool
+    let onUse: () -> Void
+    let onKeep: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(agrees ? "The model agrees" : "The model says")
+                .font(.rounded(12, .bold))
+                .foregroundStyle(agrees ? Palette.goodText : Palette.secondary)
+            if !agrees {
+                Text(gloss.meaning).font(.rounded(17, .bold))
+            }
+            if !gloss.sentence.isEmpty {
+                Text(gloss.sentence).font(.rounded(13)).foregroundStyle(Palette.secondary)
+            }
+            HStack(spacing: 10) {
+                if !agrees {
+                    Button("Use this", action: onUse)
+                        .buttonStyle(ProminentButtonStyle(fill: Palette.accent, ink: .white))
+                }
+                Button(agrees ? "Done" : "Keep mine", action: onKeep)
+                    .buttonStyle(ProminentButtonStyle(fill: Palette.raised, ink: Palette.text))
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.accentSoft.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

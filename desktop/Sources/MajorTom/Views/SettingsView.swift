@@ -79,6 +79,10 @@ struct SettingsView: View {
                             .foregroundStyle(Palette.goodText).font(.callout)
                         Text("abbringen → \(gloss.meaning)").font(.caption)
                         Text(gloss.sentence).font(.caption).foregroundStyle(.secondary)
+                        if !gloss.alternatives.isEmpty {
+                            Text("also: " + gloss.alternatives.joined(separator: ", "))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 case .bad(let message):
                     Label(message, systemImage: "xmark.circle.fill")
