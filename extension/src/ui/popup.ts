@@ -129,6 +129,34 @@ async function testKey() {
 
 /* ── Words ────────────────────────────────────────────────────────────────── */
 
+const ICONS = {
+    star: 'm12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z',
+    play: 'M8 5.5v13l10.5-6.5z',
+    trash: 'M5 7h14M10 7V4.5h4V7M6.5 7l1 13h9l1-13',
+};
+
+/** Built with DOM calls rather than markup, like everything else here. */
+function iconButton(name: keyof typeof ICONS, title: string, onClick: () => void): HTMLButtonElement {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', name === 'trash' ? 'none' : 'currentColor');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', name === 'trash' ? '2' : '1.2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', ICONS[name]);
+    svg.appendChild(path);
+
+    const button = document.createElement('button');
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.appendChild(svg);
+    button.addEventListener('click', onClick);
+    return button;
+}
+
 function fmtTime(s: number): string {
     const m = Math.floor(s / 60), sec = Math.floor(s % 60);
     return `${m}:${String(sec).padStart(2, '0')}`;
@@ -141,7 +169,8 @@ function renderWords() {
 
     const filtered = q
         ? vocab.filter(v =>
-            v.word.includes(q) || v.translation.toLowerCase().includes(q) || v.context.toLowerCase().includes(q))
+            v.word.toLowerCase().includes(q) || v.translation.toLowerCase().includes(q)
+            || v.context.toLowerCase().includes(q))
         : vocab;
 
     $('count').textContent = `${filtered.length}${q ? ` / ${vocab.length}` : ''}`;
@@ -193,28 +222,19 @@ function renderWords() {
             const icons = document.createElement('div');
             icons.className = 'icons';
 
-            const star = document.createElement('button');
-            star.className = `star${v.starred ? ' on' : ''}`;
-            star.textContent = '★';
-            star.title = 'Star';
-            star.addEventListener('click', async () => {
+            const star = iconButton('star', v.starred ? 'Unstar' : 'Star', async () => {
                 await toggleStar(v.word, v.url);
                 await reloadVocab();
             });
+            if (v.starred) star.classList.add('star', 'on');
 
-            const jump = document.createElement('button');
-            jump.textContent = '▷';
-            jump.title = `Open at ${fmtTime(v.time)}`;
-            jump.addEventListener('click', () => {
+            const jump = iconButton('play', `Open at ${fmtTime(v.time)}`, () => {
                 const url = new URL(v.url);
                 if (url.hostname.endsWith('youtube.com')) url.searchParams.set('t', `${Math.floor(v.time)}s`);
                 void chrome.tabs.create({url: url.toString()});
             });
 
-            const del = document.createElement('button');
-            del.textContent = '×';
-            del.title = 'Delete';
-            del.addEventListener('click', async () => {
+            const del = iconButton('trash', 'Delete', async () => {
                 await removeWord(v.word, v.url);
                 await reloadVocab();
             });

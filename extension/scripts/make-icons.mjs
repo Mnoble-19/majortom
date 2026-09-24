@@ -1,17 +1,71 @@
 /**
  * Generates the extension's PNG icons with no image dependencies.
  *
- * The mark is two stacked bars — a bright one over a dimmer one — which is the
- * dual-subtitle idea reduced to something still legible at 16px.
+ * The same mark as the apps (desktop/make-icon.swift): a violet tile holding a
+ * speech bubble with a highlighted word. Each pixel is supersampled so the
+ * edges stay smooth down to 16px.
  */
 import {deflateSync} from 'zlib';
 import {mkdirSync, writeFileSync} from 'fs';
 
 const OUT = 'icons';
+const SAMPLES = 4;
 
-const BG = [0x14, 0x16, 0x1e];
-const PRIMARY = [0xff, 0xff, 0xff];
-const SECONDARY = [0x7e, 0xc8, 0xe3];
+const TOP = [0x8a, 0x6b, 0xff];
+const BOTTOM = [0x5a, 0x36, 0xe6];
+const WHITE = [0xff, 0xff, 0xff];
+const YELLOW = [0xff, 0xc9, 0x33];
+const LILAC = [0xcf, 0xc4, 0xff];
+
+// Shapes in the app icon's 1024 space (y down), whose tile spans 100…924.
+// The toolbar icon has no margin, so everything is scaled out to fill it.
+const K = 1024 / 824;
+const at = v => (v - 100) * K;
+
+const roundRect = (x0, y0, x1, y1, r) => ({x0: at(x0), y0: at(y0), x1: at(x1), y1: at(y1), r: r * K});
+const BUBBLE = roundRect(252, 300, 772, 680, 120);
+const TAIL = [[318, 624], [282, 762], [452, 664]].map(([x, y]) => [at(x), at(y)]);
+const WORD = roundRect(330, 388, 580, 464, 38);
+const SENTENCE = roundRect(330, 528, 694, 586, 29);
+
+function inRoundRect(x, y, {x0, y0, x1, y1, r}) {
+    if (x < x0 || x > x1 || y < y0 || y > y1) return false;
+    const dx = Math.max(x0 + r - x, 0, x - (x1 - r));
+    const dy = Math.max(y0 + r - y, 0, y - (y1 - r));
+    return dx * dx + dy * dy <= r * r;
+}
+
+function inTriangle(x, y, [[ax, ay], [bx, by], [cx, cy]]) {
+    const s = (px, py, qx, qy, rx, ry) => (px - rx) * (qy - ry) - (qx - rx) * (py - ry);
+    const d1 = s(x, y, ax, ay, bx, by), d2 = s(x, y, bx, by, cx, cy), d3 = s(x, y, cx, cy, ax, ay);
+    return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+
+/** The colour at one point of the 1024 canvas, or null outside the tile. */
+function sample(x, y) {
+    if (!inRoundRect(x, y, {x0: 0, y0: 0, x1: 1024, y1: 1024, r: 225})) return null;
+    if (inRoundRect(x, y, WORD)) return YELLOW;
+    if (inRoundRect(x, y, SENTENCE)) return LILAC;
+    if (inRoundRect(x, y, BUBBLE) || inTriangle(x, y, TAIL)) return WHITE;
+    const t = y / 1024;
+    return TOP.map((c, i) => c + (BOTTOM[i] - c) * t);
+}
+
+function pixel(px, py, size) {
+    const acc = [0, 0, 0, 0];
+    for (let sy = 0; sy < SAMPLES; sy++) {
+        for (let sx = 0; sx < SAMPLES; sx++) {
+            const c = sample(((px + (sx + 0.5) / SAMPLES) / size) * 1024, ((py + (sy + 0.5) / SAMPLES) / size) * 1024);
+            if (!c) continue;
+            acc[0] += c[0];
+            acc[1] += c[1];
+            acc[2] += c[2];
+            acc[3] += 1;
+        }
+    }
+    if (acc[3] === 0) return [0, 0, 0, 0];
+    return [acc[0] / acc[3], acc[1] / acc[3], acc[2] / acc[3], (255 * acc[3]) / (SAMPLES * SAMPLES)].map(Math.round);
+}
 
 const CRC_TABLE = (() => {
     const t = new Int32Array(256);
@@ -39,45 +93,12 @@ function chunk(type, data) {
 }
 
 function png(size) {
-    const px = (x, y) => {
-        const r = size * 0.22; // corner radius
-        // Rounded-square mask
-        const cx = Math.min(x, size - 1 - x), cy = Math.min(y, size - 1 - y);
-        if (cx < r && cy < r) {
-            const dx = r - cx, dy = r - cy;
-            if (dx * dx + dy * dy > r * r) return null; // transparent corner
-        }
-
-        const barH = Math.max(1, Math.round(size * 0.115));
-        const gap = Math.max(1, Math.round(size * 0.1));
-        const topY = Math.round(size * 0.36);
-        const botY = topY + barH + gap;
-
-        const inset1 = Math.round(size * 0.19);
-        const inset2 = Math.round(size * 0.29);
-
-        if (y >= topY && y < topY + barH && x >= inset1 && x < size - inset1) return PRIMARY;
-        if (y >= botY && y < botY + barH && x >= inset2 && x < size - inset2) return SECONDARY;
-        return BG;
-    };
-
     const raw = Buffer.alloc(size * (size * 4 + 1));
     let o = 0;
     for (let y = 0; y < size; y++) {
         raw[o++] = 0; // filter: none
         for (let x = 0; x < size; x++) {
-            const c = px(x, y);
-            if (c === null) {
-                raw[o++] = 0;
-                raw[o++] = 0;
-                raw[o++] = 0;
-                raw[o++] = 0;
-            } else {
-                raw[o++] = c[0];
-                raw[o++] = c[1];
-                raw[o++] = c[2];
-                raw[o++] = 255;
-            }
+            for (const v of pixel(x, y, size)) raw[o++] = v;
         }
     }
 
