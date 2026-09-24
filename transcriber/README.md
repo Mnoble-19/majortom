@@ -154,6 +154,28 @@ which one it chose, because that is the only way to find out for a given phone.
 A simulator cannot answer it — it runs on the Mac's hardware, so it reports
 whatever the Mac supports.
 
+### Getting it onto a phone
+
+```bash
+cd phone && ./install-phone.sh
+```
+
+Builds, signs and installs. Also the weekly chore: a free Apple account's
+provisioning profile lasts **seven days**, after which the app stops launching
+until this is run again. Nothing about the app causes that — it is a property of
+the account, and no amount of EU sideloading changes it. The DMA opened up
+*distribution*, not code signing, and AltStore PAL wants a paid account anyway.
+Paying the $99/year is the only thing that turns seven days into a year.
+
+First install on a given phone needs two one-off steps: Developer Mode on
+(Settings → Privacy & Security), which needs a restart to take effect, and then
+trusting the certificate under Settings → General → VPN & Device Management.
+
+**Turn any VPN off first.** It blocks the tunnel `devicectl` opens to the phone,
+and the error it produces — "The tunnel connection failed" — says nothing about
+VPNs. The device shows as `paired` but `disconnected`, which reads like a cable
+or pairing fault and is not.
+
 ### Two Info.plist keys that fail silently
 
 Bonjour browsing on iOS needs `NSLocalNetworkUsageDescription` *and*
