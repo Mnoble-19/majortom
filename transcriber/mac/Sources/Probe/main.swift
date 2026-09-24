@@ -111,7 +111,7 @@ if arguments.first == "--serve" {
 
     var llm = LLMSettings.empty
     llm.endpoint = ProcessInfo.processInfo.environment["MT_ENDPOINT"] ?? llm.endpoint
-    llm.model = (try? await ModelTranslator(settings: llm, apiKey: "").models().first) as? String ?? ""
+    llm.model = ((try? await ModelTranslator(settings: llm, apiKey: "").models().first) ?? nil) ?? ""
     print(llm.model.isEmpty
         ? "no model reachable at \(llm.endpoint) — words will import untranslated"
         : "translating with \(llm.model)")
