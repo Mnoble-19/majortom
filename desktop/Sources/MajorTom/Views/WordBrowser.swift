@@ -182,6 +182,8 @@ private struct WordInspector: View {
     @State private var checking = false
     @State private var suggestion: Gloss?
     @State private var checkFailed: String?
+    @State private var editingContext = false
+    @State private var context = ""
 
     var body: some View {
         ScrollView {
@@ -229,10 +231,30 @@ private struct WordInspector: View {
                     }
                 }
 
-                if !item.context.isEmpty {
+                if !item.context.isEmpty || editingContext {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("In context").font(.rounded(13, .bold)).foregroundStyle(Palette.secondary)
-                        ContextSentence(sentence: item.context, word: item.text, size: 18)
+                        HStack {
+                            Text("In context").font(.rounded(13, .bold)).foregroundStyle(Palette.secondary)
+                            Spacer()
+                            Button(editingContext ? "Done" : "Edit") {
+                                if editingContext { store.setContext(item, context.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                                else { context = item.context }
+                                editingContext.toggle()
+                            }
+                            .buttonStyle(.plain)
+                            .font(.rounded(13, .semibold))
+                            .foregroundStyle(Palette.accentText)
+                        }
+                        if editingContext {
+                            TextField("Sentence", text: $context, axis: .vertical)
+                                .textFieldStyle(.plain)
+                                .font(.rounded(17))
+                                .lineLimit(2...10)
+                                .padding(12)
+                                .background(Palette.raised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        } else {
+                            ContextSentence(sentence: item.context, word: item.text, size: 18)
+                        }
                         if !item.contextTranslation.isEmpty {
                             Text(item.contextTranslation)
                                 .font(.rounded(15))

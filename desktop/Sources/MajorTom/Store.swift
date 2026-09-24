@@ -146,6 +146,11 @@ final class Store: ObservableObject {
         write("UPDATE item SET translation = ? WHERE id = ?", [meaning, item.id])
     }
 
+    /// The sentence kept with a word, trimmed or corrected by you.
+    func setContext(_ item: Item, _ context: String) {
+        write("UPDATE item SET context = ? WHERE id = ?", [context, item.id])
+    }
+
     /// What a translator came back with. Replaces the meaning; keeps an
     /// existing sentence translation if this one has none.
     func applyTranslation(_ meaning: String, sentence: String, alternatives: [String], to item: Item) {
