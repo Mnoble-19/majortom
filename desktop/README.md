@@ -108,6 +108,12 @@ The schema already covers calls and books; `SourceKind` and the sidebar have
 entries for both. **You do not need to change the app to make data appear** —
 insert rows with `source.kind = 'call'` and they show up under the Calls tab.
 
+Books went further and got their own landing view, because the middle level
+shows have does not earn its place for them: a show's `site` is a platform
+worth grouping by, a book's is its author, which would put most books alone in
+a group of one. `BooksView` opens a book straight from the shelf. Calls will
+likely want the same shortcut.
+
 Write directly to the SQLite file:
 
 ```sql
@@ -136,8 +142,8 @@ pipeline should write SQL directly rather than route through it. If you do want
 to reuse it, generalise `NativeHost.write` in
 [NativeHost.swift](Sources/MajorTom/NativeHost.swift).
 
-Phrase capture (`item.kind = 'phrase'`) is schema-complete but nothing writes
-it yet; the Phrases tab renders an empty state.
+Phrase capture (`item.kind = 'phrase'`) is written by the
+[reMarkable plugin](../remarkable); the extension still only writes words.
 
 ## Native messaging protocol
 
@@ -183,5 +189,16 @@ Sources/MajorTom/
   Store.swift            queries + change polling, published to the UI
   NativeHost.swift       stdio protocol, upserts from the extension
   Theme.swift            palette and type scale, shared with the extension overlay
-  Views/                 RootView, ShowsView, ShowDetailView, Components
+  Views/                 RootView, PlatformsView, BooksView, SourceDetailView, Components
+```
+
+```aiignore
+curl http://127.0.0.1:8888/v1/chat/completions \
+  -H "Authorization: Bearer not-needed" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "ajgazin/Swift-Qwen3.8-27B-Uncensored-Dynamic-MTP-GGUF:UD-Q4_K_XL",
+    "messages": [{"role": "user", "content": "What is Unsloth?"}],
+    "stream": false
+  }'
 ```
