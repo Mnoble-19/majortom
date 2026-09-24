@@ -18,12 +18,29 @@ public struct Line: Sendable, Identifiable, Hashable, Codable {
         self.start = start
     }
 
-    /// The sentence within this line that contains `word`, for `item.context`.
-    /// A line is one turn of speech, which can run to several sentences; saving
-    /// all of them as context would bury the word.
+    /// The sentence within this line that contains `word`, for `item.context`
+    /// — the only part of a conversation that is ever kept. A line is one turn
+    /// of speech, and the recognizer often leaves out the punctuation that
+    /// would split it, so a "sentence" is also cut to a few words either side
+    /// of the saved one.
     public func sentence(containing word: String) -> String {
-        let sentences = Line.split(text)
-        return sentences.first { $0.localizedCaseInsensitiveContains(word) } ?? text
+        let sentence = Line.split(text).first { $0.localizedCaseInsensitiveContains(word) } ?? text
+        return Line.window(sentence, around: word)
+    }
+
+    static let wordsEitherSide = 10
+
+    static func window(_ sentence: String, around word: String) -> String {
+        let words = sentence.split(separator: " ")
+        // A saved phrase spans several words; keep all of it plus the margin.
+        let saved = word.split(separator: " ")
+        guard words.count > wordsEitherSide * 2 + saved.count, let first = saved.first else { return sentence }
+        let at = words.firstIndex { $0.localizedCaseInsensitiveContains(first) } ?? 0
+        let lower = max(0, at - wordsEitherSide)
+        let upper = min(words.count, at + saved.count + wordsEitherSide)
+        return (lower > 0 ? "… " : "")
+            + words[lower..<upper].joined(separator: " ")
+            + (upper < words.count ? " …" : "")
     }
 
     static func split(_ text: String) -> [String] {
