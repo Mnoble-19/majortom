@@ -1,15 +1,58 @@
+import MajorTomStyle
 import SwiftUI
 
-/// Shows go platforms → that platform's shows → one show's words. Books skip
-/// the middle step and open straight from the shelf.
+/// Flat, with no associated values, so each row's tag is a plain value the
+/// sidebar's selection can match.
+enum SidebarItem: Hashable, CaseIterable {
+    case home, review, shows, calls, books, mine
+
+    static let library: [SidebarItem] = [.shows, .calls, .books, .mine]
+
+    init(_ kind: SourceKind) {
+        switch kind {
+        case .show: self = .shows
+        case .call: self = .calls
+        case .book: self = .books
+        case .own: self = .mine
+        }
+    }
+
+    var kind: SourceKind? {
+        switch self {
+        case .shows: return .show
+        case .calls: return .call
+        case .books: return .book
+        case .mine: return .own
+        case .home, .review: return nil
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .home: return "Home"
+        case .review: return "Review"
+        default: return kind!.label
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .home: return "house.fill"
+        case .review: return "rectangle.stack.fill"
+        default: return kind!.icon
+        }
+    }
+}
+
+/// Shows go platform → show → words; calls and books skip the middle step.
 enum Route: Hashable {
-    case platform(kind: SourceKind, site: String)
+    case platform(site: String)
     case source(Source)
 }
 
 struct RootView: View {
     @EnvironmentObject private var store: Store
-    @State private var tab: SourceKind = .show
+    @State private var section: SidebarItem = .home
     @State private var path: [Route] = []
 
     var body: some View {
@@ -20,108 +63,68 @@ struct RootView: View {
                 content
                     .navigationDestination(for: Route.self) { route in
                         switch route {
-                        case let .platform(kind, site):
-                            PlatformDetailView(kind: kind, site: site) {
-                                path.append(.source($0))
-                            }
-                        case let .source(source):
+                        case .platform(let site):
+                            PlatformView(site: site) { path.append(.source($0)) }
+                        case .source(let source):
                             SourceDetailView(source: source)
                         }
                     }
             }
         }
-        .background(Theme.bg)
+        .onChange(of: section) { _, _ in path.removeAll() }
     }
 
     private var sidebar: some View {
-        List(selection: $tab) {
-            Section {
-                ForEach(SourceKind.allCases, id: \.self) { kind in
-                    HStack(spacing: 12) {
-                        Image(systemName: kind.icon)
-                            .font(.system(size: 15))
-                            .frame(width: 22)
-                        Text(kind.label)
-                            .font(Theme.ui(15, .medium))
-                        Spacer()
-                        let n = store.sources(of: kind).count
-                        if n > 0 {
-                            Text("\(n)")
-                                .font(Theme.ui(13, .medium))
-                                .foregroundStyle(Theme.faint)
-                        }
-                    }
-                    .padding(.vertical, 6)
-                    .tag(kind)
+        List(selection: $section) {
+            row(.home, badge: 0)
+            row(.review, badge: store.stats.due)
+            Section("Library") {
+                ForEach(SidebarItem.library, id: \.self) { item in
+                    row(item, badge: count(item))
                 }
-            } header: {
-                Text("Library")
-                    .font(Theme.ui(12, .semibold))
-                    .foregroundStyle(Theme.faint)
-                    .kerning(1.2)
-                    .textCase(.uppercase)
-                    .padding(.bottom, 4)
             }
         }
-        .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 300)
-        .onChange(of: tab) { _, _ in path.removeAll() }
-        .safeAreaInset(edge: .bottom) { wordmark }
+        .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
     }
 
-    private var wordmark: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(Theme.accent)
-                .frame(width: 8, height: 8)
-                .shadow(color: Theme.accent.opacity(0.6), radius: 5)
-            Text("MajorTom")
-                .font(Theme.serif(16, .semibold))
-                .foregroundStyle(Theme.muted)
-            Spacer()
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
+    /// The tag goes last: a List only reads it off the row's outermost view.
+    private func row(_ item: SidebarItem, badge: Int) -> some View {
+        Label(item.label, systemImage: item.icon)
+            .font(.rounded(14, .medium))
+            .badge(badge)
+            .tag(item)
+    }
+
+    private func count(_ item: SidebarItem) -> Int {
+        guard let kind = item.kind else { return 0 }
+        if kind == .own { return store.sources(of: .own).first?.itemCount ?? 0 }
+        return store.sources(of: kind).count
     }
 
     @ViewBuilder
     private var content: some View {
         if let error = store.loadError {
-            EmptyState(
-                icon: "exclamationmark.triangle",
-                title: "Could not open the library",
-                message: error
-            )
+            EmptyState(icon: "exclamationmark.triangle", title: "Could not open the library",
+                       message: error)
         } else {
-            switch tab {
-            case .show:
-                PlatformsView(
-                    kind: .show,
-                    onOpenPlatform: { path.append(.platform(kind: .show, site: $0.id)) },
-                    onOpenShow: { path.append(.source($0)) }
-                )
-            case .call:
-                CallsView(onOpenCall: { path.append(.source($0)) }, store: store)
-            case .book:
-                BooksView(onOpenBook: { path.append(.source($0)) }, store: store)
+            switch section {
+            case .home:
+                HomeView(open: open) { path.append(.source($0)) }
+            case .review:
+                ReviewView(source: nil) { section = .home }
+            case .shows:
+                ShowsView { path.append(.platform(site: $0.id)) } openShow: { path.append(.source($0)) }
+            case .calls:
+                CallsView { path.append(.source($0)) }
+            case .books:
+                BooksView { path.append(.source($0)) }
+            case .mine:
+                MyWordsView()
             }
         }
     }
-}
 
-extension SourceKind {
-    var label: String {
-        switch self {
-        case .show: return "Shows"
-        case .call: return "Calls"
-        case .book: return "Books"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .show: return "play.rectangle"
-        case .call: return "phone"
-        case .book: return "book"
-        }
+    private func open(_ destination: SidebarItem) {
+        section = destination
     }
 }

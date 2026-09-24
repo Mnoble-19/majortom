@@ -2,16 +2,46 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="color-scheme" content="light dark">
     <style>
         :root {
-            --bg: #12131a;
-            --bg2: #191b24;
-            --line: #262936;
-            --fg: #e8eaf2;
-            --dim: #8f96a8;
-            --faint: #5c6376;
-            --accent: #7ec8e3;
-            --gold: #ffd479;
+            --bg: #f2f2f7;
+            --card: #ffffff;
+            --raised: #f6f5f9;
+            --line: #e5e5ea;
+            --fg: #1c1c1e;
+            --dim: #5e5e63;
+            --faint: #8a8a8f;
+            --accent: #6c4df5;
+            --accent-text: #5a3be0;
+            --accent-soft: #ede9ff;
+            --highlight: #ffe08a;
+            --on-highlight: #2e2100;
+            --good: #34c759;
+            --good-text: #1e7b3a;
+            --bad-text: #b3261e;
+            --switch-off: #e3e1db;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #131316;
+                --card: #1d1d22;
+                --raised: #26262d;
+                --line: #2e2e36;
+                --fg: #e9e9ee;
+                --dim: #a3a3ad;
+                --faint: #76767f;
+                --accent: #7f66ff;
+                --accent-text: #b3a5ff;
+                --accent-soft: #2a2448;
+                --highlight: #564615;
+                --on-highlight: #ffe9a8;
+                --good: #30d158;
+                --good-text: #6edc8f;
+                --bad-text: #ff8a80;
+                --switch-off: #3a3a42;
+            }
         }
 
         * {
@@ -19,56 +49,47 @@
         }
 
         body {
-            width: 360px;
+            width: 380px;
             margin: 0;
             background: var(--bg);
             color: var(--fg);
-            font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            font: 13px/1.45 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
         }
 
         header {
             display: flex;
             align-items: center;
-            gap: 9px;
-            padding: 12px 14px 10px;
-            border-bottom: 1px solid var(--line);
+            gap: 11px;
+            padding: 16px 16px 12px;
         }
 
         .logo {
-            width: 22px;
-            height: 22px;
-            border-radius: 6px;
+            width: 34px;
+            height: 34px;
             flex: none;
-            background: linear-gradient(135deg, #7ec8e3, #4a7fa8);
-            display: grid;
-            place-items: center;
-            font-size: 12px;
-            font-weight: 700;
-            color: #0d1017;
         }
 
         .brand {
-            font-weight: 650;
-            font-size: 14px;
-            letter-spacing: .01em;
+            font-weight: 800;
+            font-size: 15px;
         }
 
         .brand small {
             display: block;
-            color: var(--faint);
-            font-weight: 400;
-            font-size: 10.5px;
+            color: var(--dim);
+            font-weight: 500;
+            font-size: 12px;
         }
 
         header .spacer {
             flex: 1;
         }
 
-        /* iOS-style switch, used for the master toggle and every boolean setting */
+        /* iOS-style switch, used for the site toggle and every boolean setting */
         .sw {
             position: relative;
-            width: 34px;
-            height: 20px;
+            width: 40px;
+            height: 24px;
             flex: none;
             cursor: pointer;
         }
@@ -86,7 +107,7 @@
             position: absolute;
             inset: 0;
             border-radius: 999px;
-            background: #333849;
+            background: var(--switch-off);
             transition: background .15s;
             pointer-events: none;
         }
@@ -96,35 +117,46 @@
             position: absolute;
             top: 2px;
             left: 2px;
-            width: 16px;
-            height: 16px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
             background: #fff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
             transition: transform .15s;
         }
 
         .sw input:checked + span {
-            background: var(--accent);
+            background: var(--good);
         }
 
         .sw input:checked + span::after {
-            transform: translateX(14px);
+            transform: translateX(16px);
+        }
+
+        .sw input:focus-visible + span {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
         }
 
         nav {
             display: flex;
-            border-bottom: 1px solid var(--line);
+            margin: 0 16px 4px;
+            padding: 3px;
+            border-radius: 10px;
+            background: var(--raised);
         }
 
         nav button {
             all: unset;
             flex: 1;
             text-align: center;
-            padding: 9px 0;
+            height: 28px;
+            line-height: 28px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 12.5px;
+            font-size: 13px;
+            font-weight: 600;
             color: var(--dim);
-            border-bottom: 2px solid transparent;
         }
 
         nav button:hover {
@@ -133,16 +165,34 @@
 
         nav button.on {
             color: var(--fg);
-            border-bottom-color: var(--accent);
+            background: var(--card);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
         }
 
         .panel {
             display: none;
-            padding: 12px 14px 14px;
+            padding: 12px 16px 16px;
         }
 
         .panel.on {
             display: block;
+        }
+
+        .group + .group {
+            margin-top: 14px;
+        }
+
+        .group h2 {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--dim);
+            margin: 0 4px 6px;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 14px;
+            padding: 2px 14px;
         }
 
         .row {
@@ -150,32 +200,39 @@
             align-items: center;
             justify-content: space-between;
             gap: 10px;
-            padding: 7px 0;
+            min-height: 44px;
+            padding: 6px 0;
         }
 
         .row + .row {
-            border-top: 1px solid #1d202b;
+            border-top: 1px solid var(--line);
         }
 
         .row label {
             color: var(--fg);
+            font-weight: 500;
         }
 
         .row .hint {
             display: block;
-            color: var(--faint);
-            font-size: 11px;
-            margin-top: 1px;
+            color: var(--dim);
+            font-size: 11.5px;
+            font-weight: 400;
+        }
+
+        .note {
+            color: var(--dim);
+            font-size: 12px;
+            padding: 10px 0 4px;
         }
 
         select, input[type=text], input[type=password], input[type=search] {
-            background: var(--bg2);
+            background: var(--raised);
             color: var(--fg);
-            border: 1px solid var(--line);
-            border-radius: 7px;
-            padding: 5px 8px;
+            border: 1px solid transparent;
+            border-radius: 9px;
+            padding: 6px 10px;
             font: inherit;
-            font-size: 12.5px;
             outline: none;
         }
 
@@ -184,31 +241,18 @@
         }
 
         select {
-            max-width: 168px;
+            max-width: 170px;
         }
 
         input[type=range] {
-            width: 120px;
+            width: 130px;
             accent-color: var(--accent);
-        }
-
-        .group {
-            margin-top: 14px;
-        }
-
-        .group h2 {
-            font-size: 10.5px;
-            text-transform: uppercase;
-            letter-spacing: .07em;
-            color: var(--faint);
-            margin: 0 0 4px;
-            font-weight: 600;
         }
 
         .keyfield {
             display: flex;
-            gap: 6px;
-            margin-top: 6px;
+            gap: 8px;
+            padding: 8px 0;
         }
 
         .keyfield input {
@@ -219,42 +263,46 @@
         button.act {
             all: unset;
             cursor: pointer;
-            padding: 5px 11px;
-            border-radius: 7px;
-            background: #26506b;
-            color: #dff2fb;
-            font-size: 12px;
-            font-weight: 550;
+            padding: 6px 14px;
+            border-radius: 999px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 12.5px;
+            font-weight: 700;
             text-align: center;
         }
 
         button.act:hover {
-            background: #2f658a;
+            filter: brightness(1.08);
         }
 
         button.act.ghost {
-            background: transparent;
-            border: 1px solid var(--line);
-            color: var(--dim);
-        }
-
-        button.act.ghost:hover {
-            background: var(--bg2);
+            background: var(--raised);
             color: var(--fg);
         }
 
+        button.act:focus-visible, .icons button:focus-visible, nav button:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
         .status {
-            font-size: 11.5px;
-            margin-top: 6px;
+            font-size: 12px;
+            font-weight: 600;
             min-height: 1.2em;
+            padding-bottom: 8px;
+        }
+
+        .status:empty {
+            display: none;
         }
 
         .status.ok {
-            color: #7fd6a0;
+            color: var(--good-text);
         }
 
         .status.err {
-            color: #ef8f8f;
+            color: var(--bad-text);
         }
 
         .status.busy {
@@ -262,8 +310,9 @@
         }
 
         a {
-            color: var(--accent);
+            color: var(--accent-text);
             text-decoration: none;
+            font-weight: 600;
         }
 
         a:hover {
@@ -273,43 +322,54 @@
         /* Words */
         .toolbar {
             display: flex;
-            gap: 6px;
+            gap: 8px;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
 
         .toolbar input {
             flex: 1;
             min-width: 0;
+            background: var(--card);
         }
 
         .count {
-            color: var(--faint);
-            font-size: 11px;
+            color: var(--dim);
+            font-size: 12px;
+            font-weight: 600;
             white-space: nowrap;
         }
 
         .list {
-            max-height: 330px;
+            max-height: 400px;
             overflow-y: auto;
-            margin: 0 -4px;
-            padding: 0 4px;
         }
 
         .grp {
-            font-size: 10.5px;
-            color: var(--faint);
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            margin: 11px 0 3px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--dim);
+            margin: 12px 4px 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .grp:first-child {
+            margin-top: 0;
         }
 
         .item {
             display: flex;
             gap: 8px;
             align-items: flex-start;
-            padding: 6px 0;
-            border-top: 1px solid #1d202b;
+            padding: 10px 12px;
+            background: var(--card);
+            border-radius: 14px;
+        }
+
+        .item + .item {
+            margin-top: 6px;
         }
 
         .item .main {
@@ -318,19 +378,19 @@
         }
 
         .w {
-            color: var(--gold);
-            font-weight: 640;
-            font-size: 13.5px;
+            font-weight: 800;
+            font-size: 15px;
         }
 
         .t {
-            color: var(--fg);
-            font-size: 12px;
+            color: var(--accent-text);
+            font-weight: 600;
+            font-size: 13px;
         }
 
         .c {
-            color: var(--faint);
-            font-size: 11px;
+            color: var(--dim);
+            font-size: 12px;
             margin-top: 2px;
             display: -webkit-box;
             -webkit-line-clamp: 2;
@@ -347,131 +407,149 @@
         .icons button {
             all: unset;
             cursor: pointer;
-            width: 22px;
-            height: 22px;
-            border-radius: 6px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
             display: grid;
             place-items: center;
-            color: #4d5364;
-            font-size: 13px;
+            color: var(--faint);
         }
 
         .icons button:hover {
-            background: var(--bg2);
+            background: var(--raised);
             color: var(--fg);
         }
 
         .icons button.star.on {
-            color: var(--gold);
+            color: #ff9500;
+        }
+
+        .icons svg {
+            width: 15px;
+            height: 15px;
         }
 
         .empty {
-            color: var(--faint);
+            color: var(--dim);
             text-align: center;
-            padding: 34px 10px;
-            font-size: 12.5px;
+            padding: 36px 16px;
+            font-size: 13px;
             line-height: 1.6;
+            background: var(--card);
+            border-radius: 14px;
         }
 
         kbd {
-            background: var(--bg2);
-            border: 1px solid var(--line);
-            border-bottom-width: 2px;
-            border-radius: 4px;
-            padding: 0 4px;
-            font: 11px ui-monospace, monospace;
+            display: inline-grid;
+            place-items: center;
+            min-width: 24px;
+            height: 24px;
+            background: var(--raised);
+            border-radius: 7px;
+            font: 700 12px ui-rounded, system-ui, sans-serif;
             color: var(--fg);
         }
 
         .keys {
             display: grid;
             grid-template-columns: auto 1fr;
-            gap: 5px 9px;
+            gap: 8px 12px;
             align-items: center;
-            color: var(--dim);
-            font-size: 11.5px;
+            padding: 12px 0;
         }
     </style>
 </head>
 <body>
 <header>
-    <div class="logo">M</div>
+    <img alt="" class="logo" src="icons/128.png">
     <div class="brand">MajorTom<small id="siteLabel">—</small></div>
     <div class="spacer"></div>
     <label class="sw" title="Enable on this site">
-        <input id="siteToggle" type="checkbox"><span></span>
+        <input aria-label="Enable on this site" id="siteToggle" type="checkbox"><span></span>
     </label>
 </header>
 
 <nav>
     <button class="on" data-tab="subs">Subtitles</button>
     <button data-tab="words">Words</button>
-    <button data-tab="help">Keys</button>
+    <button data-tab="help">Shortcuts</button>
 </nav>
 
 <section class="panel on" id="tab-subs">
-    <div class="row">
-        <label>Video language<span class="hint">Language being learned</span></label>
-        <select id="sourceLang"></select>
-    </div>
-    <div class="row">
-        <label>Translate into<span class="hint">Your second line</span></label>
-        <select id="targetLang"></select>
-    </div>
-
     <div class="group">
-        <h2>Display</h2>
-        <div class="row">
-            <label>Show translation line</label>
-            <label class="sw"><input id="showSecondary" type="checkbox"><span></span></label>
-        </div>
-        <div class="row">
-            <label>Blur until hovered<span class="hint">Guess first, then check</span></label>
-            <label class="sw"><input id="blurSecondary" type="checkbox"><span></span></label>
-        </div>
-        <div class="row">
-            <label>Auto-pause each line</label>
-            <label class="sw"><input id="autoPause" type="checkbox"><span></span></label>
-        </div>
-        <div class="row">
-            <label>Loop each line<span class="hint">Repeats until you skip on</span></label>
-            <label class="sw"><input id="loopCue" type="checkbox"><span></span></label>
-        </div>
-        <div class="row">
-            <label>Hide the site's own captions</label>
-            <label class="sw"><input id="hideNativeCaptions" type="checkbox"><span></span></label>
-        </div>
-        <div class="row">
-            <label>Text size</label>
-            <input id="fontScale" max="1.8" min="0.7" step="0.05" type="range">
-        </div>
-        <div class="row">
-            <label>Height above bottom<span class="hint">Raise it clear of the player controls</span></label>
-            <input id="offsetPct" max="45" min="2" step="1" type="range">
+        <div class="card">
+            <div class="row">
+                <label for="sourceLang">Video is in</label>
+                <select id="sourceLang"></select>
+            </div>
+            <div class="row">
+                <label for="targetLang">Translate into</label>
+                <select id="targetLang"></select>
+            </div>
         </div>
     </div>
-
+    <div class="group">
+        <h2>While watching</h2>
+        <div class="card">
+            <div class="row">
+                <label for="showSecondary">Show the translation</label>
+                <label class="sw"><input id="showSecondary" type="checkbox"><span></span></label>
+            </div>
+            <div class="row">
+                <label for="blurSecondary">Blur it until I hover<span class="hint">Guess first, then check</span></label>
+                <label class="sw"><input id="blurSecondary" type="checkbox"><span></span></label>
+            </div>
+            <div class="row">
+                <label for="autoPause">Pause after each line</label>
+                <label class="sw"><input id="autoPause" type="checkbox"><span></span></label>
+            </div>
+            <div class="row">
+                <label for="loopCue">Loop each line<span class="hint">Repeats until you skip on</span></label>
+                <label class="sw"><input id="loopCue" type="checkbox"><span></span></label>
+            </div>
+            <div class="row">
+                <label for="hideNativeCaptions">Hide the site’s own captions</label>
+                <label class="sw"><input id="hideNativeCaptions" type="checkbox"><span></span></label>
+            </div>
+        </div>
+    </div>
+    <div class="group">
+        <h2>Look</h2>
+        <div class="card">
+            <div class="row">
+                <label for="fontScale">Text size</label>
+                <input id="fontScale" max="1.8" min="0.7" step="0.05" type="range">
+            </div>
+            <div class="row">
+                <label for="offsetPct">Height<span class="hint">Clear of the player controls</span></label>
+                <input id="offsetPct" max="45" min="2" step="1" type="range">
+            </div>
+        </div>
+    </div>
     <div class="group">
         <h2>DeepL</h2>
-        <div style="color:var(--faint);font-size:11.5px">
-            Needed everywhere except YouTube, which translates its own subtitles for free.
-            <a href="https://www.deepl.com/pro-api" rel="noopener" target="_blank">Get a free key</a> —
-            500k characters/month.
-        </div>
-        <div class="keyfield">
-            <input autocomplete="off" id="deeplKey" placeholder="DeepL API key" spellcheck="false" type="password">
-            <button class="act" id="testKey">Test</button>
-        </div>
-        <div class="status" id="keyStatus"></div>
-        <div class="keyfield">
-            <button class="act ghost" id="clearCache">Clear translation cache</button>
+        <div class="card">
+            <div class="note">
+                Needed everywhere except YouTube, which translates its own subtitles.
+                <a href="https://www.deepl.com/pro-api" rel="noopener" target="_blank">Get a free key</a>
+                — 500k characters a month.
+            </div>
+            <div class="keyfield">
+                <input aria-label="DeepL API key" autocomplete="off" id="deeplKey" placeholder="DeepL API key"
+                       spellcheck="false" type="password">
+                <button class="act" id="testKey">Test</button>
+            </div>
+            <div class="status" id="keyStatus"></div>
+            <div class="keyfield">
+                <button class="act ghost" id="clearCache">Clear translation cache</button>
+            </div>
         </div>
     </div>
 </section>
 
 <section class="panel" id="tab-words">
     <div class="toolbar">
-        <input id="search" placeholder="Search words…" type="search">
+        <input aria-label="Search words" id="search" placeholder="Search words…" type="search">
         <span class="count" id="count"></span>
         <button class="act ghost" id="export" title="Download as TSV for Anki">Export</button>
     </div>
@@ -479,24 +557,25 @@
 </section>
 
 <section class="panel" id="tab-help">
-    <div class="keys">
-        <kbd>[</kbd><span>Previous subtitle</span>
-        <kbd>]</kbd><span>Next subtitle</span>
-        <kbd>\</kbd><span>Replay current subtitle</span>
-        <kbd>P</kbd><span>Toggle auto-pause</span>
-        <kbd>L</kbd><span>Loop the current subtitle</span>
-        <kbd>H</kbd><span>Toggle blurred translation</span>
+    <div class="card">
+        <div class="keys">
+            <kbd>[</kbd><span>Previous line</span>
+            <kbd>]</kbd><span>Next line</span>
+            <kbd>\</kbd><span>Replay this line</span>
+            <kbd>P</kbd><span>Pause after each line</span>
+            <kbd>L</kbd><span>Loop this line</span>
+            <kbd>H</kbd><span>Blur the translation</span>
+        </div>
     </div>
-    <div class="group">
+    <div class="group" style="margin-top: 14px">
         <h2>Tips</h2>
-        <div style="color:var(--dim);font-size:12px;line-height:1.65">
+        <div class="card note" style="padding: 12px 14px; line-height: 1.65">
             Click any word in the top line to look it up and save it.<br>
-            Hover the subtitles to reveal the toolbar.<br>
-            Keys are ignored while you're typing in a text box.
+            Hover the subtitles to show the toolbar.<br>
+            Keys are ignored while you’re typing in a text box.
         </div>
     </div>
 </section>
-
 <script src="popup.js"></script>
 </body>
 </html>

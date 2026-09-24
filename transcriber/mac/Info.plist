@@ -8,6 +8,8 @@
     <string>MajorTom Calls</string>
     <key>CFBundleIdentifier</key>
     <string>com.majortom.calls</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleExecutable</key>
     <string>MajorTomCalls</string>
     <key>CFBundlePackageType</key>

@@ -1,333 +1,209 @@
+import MajorTomStyle
 import SwiftUI
+
+extension SourceKind {
+    var label: String {
+        switch self {
+        case .show: return "Shows"
+        case .call: return "Calls"
+        case .book: return "Books"
+        case .own: return "My words"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .show: return "play.rectangle.fill"
+        case .call: return "bubble.left.and.bubble.right.fill"
+        case .book: return "book.closed.fill"
+        case .own: return "pencil.line"
+        }
+    }
+
+    var tint: Palette.Tint {
+        switch self {
+        case .show: return Palette.shows
+        case .call: return Palette.calls
+        case .book: return Palette.books
+        case .own: return Palette.Tint(fill: Palette.accentSoft, ink: Palette.accentText)
+        }
+    }
+}
 
 struct EmptyState: View {
     let icon: String
     let title: String
-    var message: String = ""
+    var message = ""
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.system(size: 46, weight: .ultraLight))
-                .foregroundStyle(Theme.faint)
+                .font(.system(size: 40, weight: .medium))
+                .foregroundStyle(Palette.accent)
+                .frame(width: 84, height: 84)
+                .background(Palette.accentSoft, in: Circle())
             Text(title)
-                .font(Theme.serif(22, .medium))
-                .foregroundStyle(Theme.text)
+                .font(.rounded(22, .bold))
             if !message.isEmpty {
                 Text(message)
-                    .font(Theme.ui(14))
-                    .foregroundStyle(Theme.muted)
+                    .font(.rounded(15))
+                    .foregroundStyle(Palette.secondary)
                     .multilineTextAlignment(.center)
-                    .lineSpacing(3)
                     .frame(maxWidth: 420)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.bg)
+        .background(Palette.background)
     }
 }
 
 struct SectionHeader: View {
     let title: String
-    var trailing: String = ""
+    var trailing = ""
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title)
-                .font(Theme.ui(12, .semibold))
-                .foregroundStyle(Theme.faint)
-                .textCase(.uppercase)
-                .kerning(1.2)
+            Text(title).font(.rounded(17, .bold))
             Spacer()
             if !trailing.isEmpty {
-                Text(trailing)
-                    .font(Theme.ui(13, .medium))
-                    .foregroundStyle(Theme.faint)
+                Text(trailing).font(.rounded(14, .medium)).foregroundStyle(Palette.secondary)
             }
         }
     }
 }
 
-struct PlatformCard: View {
-    let platform: Platform
-    let onOpen: () -> Void
+/// A progress ring in the Activity style: a faint full track, a bright arc.
+struct Ring: View {
+    let progress: Double
+    let color: Color
+    var lineWidth: CGFloat = 10
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(color.opacity(0.18), lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: max(0.001, min(progress, 1)))
+                .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .animation(.easeOut(duration: 0.4), value: progress)
+    }
+}
+
+/// A tinted tile that opens something: a platform, a show, a call, a source
+/// kind on the home screen.
+struct Tile<Content: View>: View {
+    let tint: Palette.Tint
+    var height: CGFloat? = nil
+    let action: () -> Void
+    @ViewBuilder let content: () -> Content
     @State private var hovering = false
 
     var body: some View {
-        Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: 16) {
-                Image(systemName: platform.icon)
-                    .font(.system(size: 30))
-                    .foregroundStyle(Theme.accent.opacity(hovering ? 1 : 0.7))
-
-                Spacer(minLength: 0)
-
-                Text(platform.name)
-                    .font(Theme.serif(24, .semibold))
-                    .foregroundStyle(Theme.text)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    Text("\(platform.showCount)")
-                        .font(Theme.ui(14, .semibold))
-                        .foregroundStyle(Theme.muted)
-                    Text(platform.showCount == 1 ? "show" : "shows")
-                        .font(Theme.ui(13))
-                        .foregroundStyle(Theme.faint)
-                    Text("·").foregroundStyle(Theme.faint)
-                    Text("\(platform.wordCount)")
-                        .font(Theme.ui(14, .semibold))
-                        .foregroundStyle(Theme.muted)
-                    Text(platform.wordCount == 1 ? "word" : "words")
-                        .font(Theme.ui(13))
-                        .foregroundStyle(Theme.faint)
-                }
-            }
-            .padding(22)
-            .frame(height: 200, alignment: .topLeading)
-            .frame(maxWidth: .infinity)
-            .cardSurface(hovering: hovering)
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) { content() }
+                .foregroundStyle(tint.ink)
+                .padding(22)
+                .frame(maxWidth: .infinity, minHeight: height, alignment: .topLeading)
+                .background(tint.fill, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .scaleEffect(hovering ? 1.015 : 1)
+                .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.14), value: hovering)
+        .animation(.spring(duration: 0.25), value: hovering)
     }
 }
 
-struct ShowCard: View {
-    let source: Source
-    var showsPlatform: Bool = false
-    /// Calls reuse this card; only the glyph differs.
-    var icon: String = "play.rectangle.fill"
-    let onOpen: () -> Void
-    @State private var hovering = false
+/// The small square that holds a source glyph on tiles and rows.
+struct KindBadge: View {
+    let kind: SourceKind
+    var size: CGFloat = 40
 
     var body: some View {
-        Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundStyle(Theme.accent.opacity(hovering ? 1 : 0.7))
-
-                Text(source.title)
-                    .font(Theme.serif(16, .medium))
-                    .foregroundStyle(Theme.text)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: 8) {
-                    if showsPlatform {
-                        Text(Platform.displayName(for: source.site)).pill(Theme.secondary)
-                    }
-                    Spacer()
-                    if source.learnedCount > 0 {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.success)
-                        Text("\(source.learnedCount)/\(source.wordCount)")
-                            .font(Theme.ui(13, .semibold))
-                            .foregroundStyle(Theme.muted)
-                    } else {
-                        Text("\(source.wordCount)")
-                            .font(Theme.ui(14, .semibold))
-                            .foregroundStyle(Theme.muted)
-                        Text(source.wordCount == 1 ? "word" : "words")
-                            .font(Theme.ui(12))
-                            .foregroundStyle(Theme.faint)
-                    }
-                }
-            }
-            .padding(16)
-            .frame(height: 165, alignment: .topLeading)
-            .frame(maxWidth: .infinity)
-            .cardSurface(hovering: hovering)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.14), value: hovering)
+        Image(systemName: kind.icon)
+            .font(.system(size: size * 0.45, weight: .semibold))
+            .foregroundStyle(kind.tint.ink)
+            .frame(width: size, height: size)
+            .background(kind.tint.fill, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
     }
 }
 
-/// A book on the shelf. There are no cover images to show — the tablet only
-/// ever sends a title — so the cover is drawn from the title itself rather
-/// than leaving a placeholder that reads as a failed image.
-struct BookCard: View {
-    let source: Source
-    let onOpen: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: 10) {
-                cover
-
-                Text(source.title)
-                    .font(Theme.ui(14, .medium))
-                    .foregroundStyle(Theme.text)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !source.site.isEmpty {
-                    Text(source.site)
-                        .font(Theme.ui(12))
-                        .foregroundStyle(Theme.faint)
-                        .lineLimit(1)
-                }
-
-                counts
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.14), value: hovering)
-    }
-
-    private var cover: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [source.coverTint.opacity(0.55), source.coverTint.opacity(0.16)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            // The spine, so a tile reads as a book edge-on rather than a card.
-            Rectangle()
-                .fill(Color.black.opacity(0.28))
-                .frame(width: 10)
-                .overlay(alignment: .trailing) {
-                    Rectangle().fill(Color.white.opacity(0.10)).frame(width: 1)
-                }
-
-            Text(source.title)
-                .font(Theme.serif(16, .semibold))
-                .foregroundStyle(Theme.text.opacity(0.92))
-                .lineLimit(5)
-                .multilineTextAlignment(.leading)
-                .lineSpacing(2)
-                .padding(.leading, 22)
-                .padding(.trailing, 14)
-                .padding(.vertical, 16)
-        }
-        .aspectRatio(0.68, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .stroke(hovering ? Theme.accent.opacity(0.45) : Theme.border, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(hovering ? 0.45 : 0.3), radius: hovering ? 12 : 6, y: 4)
-        .offset(y: hovering ? -3 : 0)
-    }
-
-    private var counts: some View {
-        HStack(spacing: 8) {
-            if source.learnedCount > 0 {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.success)
-                Text("\(source.learnedCount)/\(source.wordCount + source.phraseCount)")
-                    .font(Theme.ui(13, .semibold))
-                    .foregroundStyle(Theme.muted)
-            } else {
-                Text("\(source.wordCount + source.phraseCount)")
-                    .font(Theme.ui(13, .semibold))
-                    .foregroundStyle(Theme.muted)
-                Text("saved")
-                    .font(Theme.ui(12))
-                    .foregroundStyle(Theme.faint)
-            }
-        }
-    }
-}
-
-/// A recently watched episode, on the landing screen — any platform.
-struct RecentShowRow: View {
-    let source: Source
-    let onOpen: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: onOpen) {
-            HStack(spacing: 16) {
-                Text(source.title)
-                    .font(Theme.serif(16, .medium))
-                    .foregroundStyle(Theme.text)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .lineLimit(1)
-
-                Text(Platform.displayName(for: source.site))
-                    .pill(Theme.secondary)
-
-                HStack(spacing: 5) {
-                    Text("\(source.wordCount)")
-                        .font(Theme.ui(14, .semibold))
-                        .foregroundStyle(Theme.muted)
-                    Text(source.wordCount == 1 ? "word" : "words")
-                        .font(Theme.ui(13))
-                        .foregroundStyle(Theme.faint)
-                }
-                .frame(width: 90, alignment: .trailing)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.faint.opacity(hovering ? 1 : 0.4))
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
-            .background(hovering ? Color.white.opacity(0.03) : .clear)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-    }
-}
-
-struct LearnedButton: View {
-    let status: ItemStatus
+struct Pill: View {
+    let text: String
+    var selected = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: status == .learned ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 15))
-                .foregroundStyle(status == .learned ? Theme.success : Theme.faint.opacity(0.45))
-                .contentShape(Rectangle())
+            Text(text)
+                .font(.rounded(14, .semibold))
+                .padding(.horizontal, 16)
+                .frame(height: 34)
+                .foregroundStyle(selected ? Palette.card : Palette.text)
+                .background(selected ? Palette.text : Palette.card, in: Capsule())
         }
         .buttonStyle(.plain)
-        .help(status == .learned ? "Move back to still learning" : "Mark as learned")
     }
 }
 
-struct StarButton: View {
-    let starred: Bool
-    let action: () -> Void
+/// A one-line notice under the toolbar: sync results, translation results.
+struct Banner: View {
+    let message: String
+    var isFailure = false
+    var onDismiss: (() -> Void)?
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: starred ? "star.fill" : "star")
-                .font(.system(size: 14))
-                .foregroundStyle(starred ? Theme.accent : Theme.faint.opacity(0.45))
-                .contentShape(Rectangle())
+        HStack(spacing: 10) {
+            Image(systemName: isFailure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(isFailure ? Palette.warmText : Palette.goodText)
+            Text(message).font(.rounded(14, .medium))
+            Spacer()
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.secondary)
+                .accessibilityLabel("Dismiss")
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .frame(height: 42)
+        .background(isFailure ? Palette.badSoft : Palette.goodSoft,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
 
-extension Source {
-    /// A stable colour per book, so a shelf reads as distinct spines rather
-    /// than one tile repeated. Deterministic on purpose — Swift seeds
-    /// `hashValue` per process, which would reshuffle the shelf every launch.
-    var coverTint: Color {
-        var hash: UInt64 = 5381
-        for byte in title.utf8 { hash = (hash &* 33) &+ UInt64(byte) }
-        return Color(hue: Double(hash % 360) / 360, saturation: 0.45, brightness: 0.62)
+/// Button look for the one main action on a screen.
+struct ProminentButtonStyle: ButtonStyle {
+    var fill: Color = Palette.accent
+    var ink: Color = .white
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.rounded(16, .bold))
+            .padding(.horizontal, 24)
+            .frame(minHeight: 46)
+            .foregroundStyle(ink)
+            .background(fill, in: Capsule())
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .contentShape(Capsule())
+    }
+}
+
+extension Date {
+    /// "2h ago", "Yesterday", "Tuesday", "12 Sep": how recent a save reads.
+    var relativeDay: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(self) {
+            return formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
+        }
+        if calendar.isDateInYesterday(self) { return "Yesterday" }
+        if let days = calendar.dateComponents([.day], from: self, to: Date()).day, days < 7 {
+            return formatted(.dateTime.weekday(.wide))
+        }
+        return formatted(.dateTime.day().month(.abbreviated))
     }
 }

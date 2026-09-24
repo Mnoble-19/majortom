@@ -26,6 +26,9 @@ final class PhoneSession {
     private(set) var sessionID = UUID().uuidString
     private(set) var startedAt = Date()
 
+    /// The locale the installed model was prepared for; picking another region
+    /// needs its own model.
+    private var preparedLocale: String?
     private var transcriber: Transcriber?
     private var mic: MicSource?
     private var pump: Task<Void, Never>?
@@ -43,10 +46,11 @@ final class PhoneSession {
         // Before the guard: it is a hardware fact, so it should be on screen
         // even when the model is already installed and there is nothing to do.
         engine = Transcriber.availableEngine
-        guard modelState != .ready else { return }
+        guard modelState != .ready || preparedLocale != localeIdentifier else { return }
         modelState = .downloading
         do {
             try await Transcriber.ensureModel(locale: Locale(identifier: localeIdentifier))
+            preparedLocale = localeIdentifier
             modelState = .ready
         } catch {
             modelState = .unsupported("\(error)")

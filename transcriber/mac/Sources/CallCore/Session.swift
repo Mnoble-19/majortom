@@ -145,6 +145,13 @@ public final class Session: @unchecked Sendable {
         )
     }
 
+    /// Replaces a misheard word, so the wrong one does not stay in the library.
+    public func correct(_ old: String, to new: String, from line: Line) throws {
+        guard let sourceID else { return }
+        try database.deleteItem(sourceID: sourceID, text: old)
+        try save(word: new, from: line)
+    }
+
     /// Stops capture and drops the transcript. Saved words are already in the
     /// database by this point; nothing here writes anything.
     public func end() async {

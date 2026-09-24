@@ -57,6 +57,9 @@ enum NativeHost {
     /// Upserts, so the extension can safely resend its whole vocabulary and a
     /// first sync doubles as the initial import.
     ///
+    /// An empty translation never overwrites a filled one: the browser sends
+    /// blanks when DeepL is down, and the library may have filled them since.
+    ///
     /// Deliberately does not update `starred` on conflict. The browser only
     /// ever reports what it knows, so resending would wipe anything starred in
     /// the app; the browser seeds the flag, the app owns it from then on.
@@ -117,9 +120,10 @@ enum NativeHost {
                                   context_translation, position, starred, created_at)
                 VALUES (?, 'word', ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(source_id, kind, text) DO UPDATE SET
-                    translation = excluded.translation,
+                    translation = COALESCE(NULLIF(excluded.translation, ''), item.translation),
                     context = excluded.context,
-                    context_translation = excluded.context_translation,
+                    context_translation = COALESCE(
+                        NULLIF(excluded.context_translation, ''), item.context_translation),
                     position = excluded.position
                 """, [
                     sourceID, entry.word, entry.translation ?? "", entry.context ?? "",

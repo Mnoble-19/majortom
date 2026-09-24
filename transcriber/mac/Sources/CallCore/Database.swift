@@ -121,6 +121,11 @@ public final class Database: @unchecked Sendable {
         if !columnExists("source", "origin") {
             try exec("ALTER TABLE source ADD COLUMN origin TEXT NOT NULL DEFAULT 'mac';")
         }
+        // Owned by the library app; added here too so the query below works on
+        // a file this package created first.
+        if !columnExists("item", "removed_at") {
+            try exec("ALTER TABLE item ADD COLUMN removed_at TEXT;")
+        }
     }
 
     private func columnExists(_ table: String, _ column: String) -> Bool {
@@ -129,6 +134,24 @@ public final class Database: @unchecked Sendable {
     }
 
     // MARK: - Writing
+
+    /// The one source holding words typed in by hand, on the Mac or the phone.
+    /// Same row the library app creates, so both land in one "My words" list.
+    public func ownWordsSource() throws -> Int64 {
+        let ids = try query(
+            """
+            INSERT INTO source (kind, title, site, url, created_at)
+            VALUES ('own', 'My words', '', 'own', ?)
+            ON CONFLICT(kind, url, title) DO UPDATE SET kind = kind
+            RETURNING id;
+            """,
+            [ISO8601.string()]
+        ) { $0.int(0) }
+        guard let id = ids.first else {
+            throw DatabaseError.query("own-words source upsert returned no id")
+        }
+        return id
+    }
 
     /// One call or one in-person session. `url` carries a stable UUID so that
     /// syncing the same session twice updates it instead of duplicating it.
@@ -157,7 +180,7 @@ public final class Database: @unchecked Sendable {
     }
 
     /// Saving the same word twice in one session updates it rather than
-    /// failing, which is what makes a later translation pass possible.
+    /// failing. A resend with no translation keeps the one already filled in.
     public func upsertItem(
         sourceID: Int64,
         text: String,
@@ -174,13 +197,18 @@ public final class Database: @unchecked Sendable {
                               context_translation, position, starred, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
             ON CONFLICT(source_id, kind, text) DO UPDATE SET
-                translation = excluded.translation,
+                translation = COALESCE(NULLIF(excluded.translation, ''), item.translation),
                 context = excluded.context,
-                context_translation = excluded.context_translation;
+                context_translation = COALESCE(
+                    NULLIF(excluded.context_translation, ''), item.context_translation);
             """,
             [sourceID, kind, text, translation, context, contextTranslation, position,
              ISO8601.string(createdAt)]
         )
+    }
+
+    public func deleteItem(sourceID: Int64, text: String) throws {
+        try run("DELETE FROM item WHERE source_id = ? AND text = ?;", [sourceID, text])
     }
 
     /// Everything still waiting for a translation, across every source. Words
@@ -189,7 +217,7 @@ public final class Database: @unchecked Sendable {
     /// than only at the moment of import.
     public func untranslatedItems() throws -> [(id: Int64, text: String, context: String)] {
         try query(
-            "SELECT id, text, context FROM item WHERE translation = '' ORDER BY id;"
+            "SELECT id, text, context FROM item WHERE translation = '' AND removed_at IS NULL ORDER BY id;"
         ) { ($0.int(0), $0.string(1), $0.string(2)) }
     }
 

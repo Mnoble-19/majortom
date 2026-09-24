@@ -1,7 +1,8 @@
 # MajorTom Desktop
 
-Native macOS app (SwiftUI) that holds everything you save while learning: words
-from the browser extension today, call keywords and book vocabulary later.
+Native macOS app (SwiftUI) that holds everything you save while learning — words
+from shows, calls and books — and quizzes you on them. Light and dark, following
+macOS or set in Settings.
 
 The browser extension keeps working without this app. The app is a library on
 top of it, not a dependency.
@@ -54,12 +55,13 @@ external writes appear without a restart.
 
 ## Schema
 
-Two tables. Sources are anything you saved *from*; items are what you saved.
+Two main tables. Sources are anything you saved *from*; items are what you
+saved. A third, `review`, is the app's own log of review answers.
 
 ```sql
 CREATE TABLE source (
     id         INTEGER PRIMARY KEY,
-    kind       TEXT NOT NULL,           -- 'show' | 'call' | 'book'
+    kind       TEXT NOT NULL,           -- 'show' | 'call' | 'book' | 'own' (typed in)
     title      TEXT NOT NULL,           -- shown as the card/heading label
     site       TEXT NOT NULL DEFAULT '',-- hostname, or the other party for a call
     url        TEXT NOT NULL DEFAULT '',-- deep link back, '' if none
@@ -79,10 +81,20 @@ CREATE TABLE item (
     starred             INTEGER NOT NULL DEFAULT 0,
     status              TEXT NOT NULL DEFAULT 'learning', -- 'learning' | 'learned'
     created_at          TEXT NOT NULL,
+    removed_at          TEXT,                    -- deleted in the app; see below
+    review_streak       INTEGER NOT NULL DEFAULT 0, -- right answers in a row
+    review_due          TEXT,                    -- next review; NULL = never reviewed
     UNIQUE(source_id, kind, text)
 );
 
 CREATE INDEX item_source ON item(source_id, kind);
+
+CREATE TABLE review (
+    id      INTEGER PRIMARY KEY,
+    item_id INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,
+    correct INTEGER NOT NULL,
+    at      TEXT NOT NULL
+);
 ```
 
 `position` is "where in the source", per kind: playback seconds for a show,
@@ -90,13 +102,21 @@ seconds into the recording for a call, a page or locator for a book. `0` means
 unknown and renders as `—`.
 
 `status` is learning progress. Marking something `learned` never removes it —
-it stays in the library, dimmed and struck through, and filterable.
+it stays in the library, filterable. Review sets it too: three right answers in
+a row, a day and then three days apart, and a word counts as learned.
+
+`removed_at` is a soft delete. Deleting a word in the app cannot remove the row,
+because the extension resends its whole vocabulary on every save and would put
+it straight back; a set `removed_at` hides it from every read instead.
 
 Both UNIQUE constraints are the dedup keys — use `ON CONFLICT ... DO UPDATE` to
 make writes idempotent, which is how the extension can safely resend its whole
-vocabulary on every save.
+vocabulary on every save. Never let a blank translation overwrite a filled one:
+use `COALESCE(NULLIF(excluded.translation, ''), item.translation)`, since the app
+fills in translations after the fact.
 
-**`starred` and `status` belong to the app.** Seed them on insert if you like,
+**`starred`, `status`, `removed_at` and the `review_` columns belong to the
+app.** Seed them on insert if you like,
 but never include them in a `DO UPDATE` clause. An importer only reports what it
 knows, so updating them on conflict silently wipes whatever the user set in the
 app the next time the importer runs — this was a real bug in the extension path
@@ -127,10 +147,11 @@ VALUES (?, 'word', 'beharrlich', 'persistent',
         'Er blieb beharrlich bei seiner Forderung.',
         'He remained persistent in his demand.', 142.0, 0, '2026-09-20T19:04:00.000Z')
 ON CONFLICT(source_id, kind, text) DO UPDATE SET
-    translation = excluded.translation,
+    translation = COALESCE(NULLIF(excluded.translation, ''), item.translation),
     context = excluded.context,
-    context_translation = excluded.context_translation;
-    -- note: no starred, no status. Those are the app's.
+    context_translation = COALESCE(NULLIF(excluded.context_translation, ''),
+                                   item.context_translation);
+    -- note: no starred, status, removed_at or review_. Those are the app's.
 ```
 
 Open the DB with `PRAGMA journal_mode=WAL` and a busy timeout, and keep writes
@@ -185,10 +206,14 @@ install-host.sh          registers the host with every Chromium browser
 Sources/MajorTom/
   main.swift             dispatches: --native-host, else the app
   Database.swift         SQLite wrapper, path resolution, migrations
-  Models.swift           Source, Item, wire types
-  Store.swift            queries + change polling, published to the UI
+  Models.swift           Source, Item, Stats, wire types
+  Store.swift            queries, review scheduling, change polling
   NativeHost.swift       stdio protocol, upserts from the extension
-  Theme.swift            palette and type scale, shared with the extension overlay
-  Views/                 RootView, PlatformsView, BooksView, SourceDetailView, Components
+  PhoneSync.swift        receives the phone's words, translates the backlog
+  Syncer.swift           runs remarkable/sync.py
+  Views/                 Home, Review, Shows, Calls, Books, the word browser, Settings
 ```
+
+Colours and fonts come from `MajorTomStyle` in `../transcriber/mac`, which the
+calls app and the phone share, so all three look like one product.
 

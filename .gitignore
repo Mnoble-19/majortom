@@ -25,3 +25,5 @@ desktop/Resources/
 # Python bytecode, from remarkable/sync.py
 __pycache__/
 *.pyc
+# Zipped snapshots of each app, made by archive-builds.sh
+builds/

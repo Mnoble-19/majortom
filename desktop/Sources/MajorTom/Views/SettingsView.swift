@@ -1,14 +1,16 @@
 import CallCore
+import MajorTomStyle
 import SwiftUI
 
-/// Where the local model lives, and a Test that actually translates something
-/// rather than only checking the port is open.
+/// Appearance, and where the local model lives — with a Test that actually
+/// translates something rather than only checking the port is open.
 ///
-/// This is in the library app rather than the calls app because translating is
-/// a library job: words arrive untranslated from the phone, from the reMarkable
+/// Translation is configured here rather than in the calls app because it is a
+/// library job: words arrive untranslated from the phone, from the reMarkable
 /// with no wifi, and from the browser when DeepL is down, and all of them get
 /// filled in from here.
-struct TranslationSettingsView: View {
+struct SettingsView: View {
+    @AppStorage("appearance") private var appearance = Appearance.system
     @State private var settings = Settings.llm
     @State private var apiKey = Settings.apiKey
     @State private var models: [String] = []
@@ -22,6 +24,16 @@ struct TranslationSettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(Appearance.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            } footer: {
+                Text("System follows macOS. Dark is softer on the eyes in a dim room.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Local model") {
                 TextField("Endpoint", text: $settings.endpoint,
                           prompt: Text("http://localhost:9931/v1"))
@@ -64,13 +76,13 @@ struct TranslationSettingsView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Label(String(format: "Working — answered in %.1fs", seconds),
                               systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green).font(.callout)
+                            .foregroundStyle(Palette.goodText).font(.callout)
                         Text("abbringen → \(gloss.meaning)").font(.caption)
                         Text(gloss.sentence).font(.caption).foregroundStyle(.secondary)
                     }
                 case .bad(let message):
                     Label(message, systemImage: "xmark.circle.fill")
-                        .foregroundStyle(.red).font(.callout)
+                        .foregroundStyle(Palette.badText).font(.callout)
                         .textSelection(.enabled)
                 case nil:
                     Text("Translates a real sentence, so a wrong model name shows up here rather than silently leaving words blank.")
@@ -79,7 +91,7 @@ struct TranslationSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460)
+        .frame(width: 480)
         .onChange(of: settings) { _, new in Settings.llm = new }
         .onChange(of: apiKey) { _, new in Settings.apiKey = new }
     }

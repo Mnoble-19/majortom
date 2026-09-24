@@ -1,5 +1,6 @@
 import AppKit
 import CallCore
+import MajorTomStyle
 import SwiftUI
 
 @main
@@ -9,16 +10,18 @@ struct MajorTomCallsApp: App {
     var body: some Scene {
         Window("Calls", id: "calls") {
             CallView(model: model)
-                .frame(minWidth: 620, minHeight: 420)
+                .frame(minWidth: 680, minHeight: 460)
+                .tint(Palette.accent)
         }
-        .defaultSize(width: 760, height: 540)
+        .windowToolbarStyle(.unified(showsTitle: false))
+        .defaultSize(width: 900, height: 600)
 
         // The window has to stay reachable while the call app is in front, and a
         // menu bar item is the one place that is always visible. Starting a
         // session from here means not hunting for the window first.
         MenuBarExtra("Calls", systemImage: model.isRunning ? "waveform.circle.fill" : "waveform.circle") {
             if model.isRunning {
-                Text("Recording \(model.person)")
+                Text("Listening to \(model.person) · \(model.saved.count) saved")
                 Button("End session") { Task { await model.end() } }
             } else {
                 Button("Start session with \(model.person.isEmpty ? "…" : model.person)") {
@@ -38,121 +41,46 @@ struct MajorTomCallsApp: App {
 
 struct CallView: View {
     let model: SessionModel
-    @State private var floatAboveOthers = true
+    @AppStorage("floatAboveOthers") private var floatAboveOthers = true
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            HSplitView {
-                transcript.frame(minWidth: 320)
-                SavedWordsView(words: model.saved, onCorrect: model.recorrect)
-                    .frame(minWidth: 230)
+        Group {
+            if model.isRunning {
+                HStack(spacing: 0) {
+                    TranscriptView(model: model)
+                    SavedWordsView(words: model.saved, onCorrect: model.recorrect)
+                        .frame(width: 260)
+                }
+            } else {
+                SetupView(model: model)
             }
         }
+        .background(Palette.background)
+        .toolbar { toolbar }
         .onChange(of: floatAboveOthers) { _, float in setFloating(float) }
         .onAppear { setFloating(floatAboveOthers) }
     }
 
-    private var header: some View {
-        HStack(spacing: 10) {
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
             if model.isRunning {
-                Circle().fill(.red).frame(width: 8, height: 8)
-                Text(model.person).font(.headline)
-                if let app = model.tappedApp {
-                    Text("· hearing \(app)").font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text("· mic only, no app playing audio")
-                        .font(.caption).foregroundStyle(.orange)
-                }
-                Spacer()
-                Button("End") { Task { await model.end() } }
-            } else {
-                TextField("Who are you talking to?", text: Binding(
-                    get: { model.person }, set: { model.person = $0 }))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 190)
-                    .onSubmit { Task { await model.start() } }
-
-                Picker("", selection: Binding(
-                    get: { model.localeIdentifier }, set: { model.localeIdentifier = $0 })) {
-                    Text("Germany").tag("de-DE")
-                    Text("Austria").tag("de-AT")
-                    Text("Switzerland").tag("de-CH")
-                }
-                .labelsHidden()
-                .frame(width: 130)
-
-                Button("Start") { Task { await model.start() } }
-                    .keyboardShortcut(.return)
-                    .disabled(model.person.isEmpty)
-                Spacer()
-            }
-
-            Toggle("Float", isOn: $floatAboveOthers)
-                .toggleStyle(.checkbox)
-                .help("Keep this window above the call app")
-        }
-        .padding(10)
-    }
-
-    private var transcript: some View {
-        ScrollViewReader { scroll in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    if let error = model.error {
-                        Label(error, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange).font(.callout).padding(.bottom, 8)
-                    }
-
-                    if !model.isRunning && model.lines.isEmpty {
-                        idleHint
-                    }
-
-                    ForEach(model.lines) { line in
-                        LineView(
-                            line: line,
-                            person: model.person,
-                            savedWords: savedWordSet,
-                            onTap: { model.save(word: $0, from: line) })
-                        .id(line.id)
-                    }
-
-                    // What the recognizer has heard but not committed. Not
-                    // clickable: it is still being revised, so a word here can
-                    // change under the click.
-                    ForEach(Speaker.allCasesInOrder, id: \.self) { speaker in
-                        if let text = model.volatile[speaker], !text.isEmpty {
-                            Text(text)
-                                .font(.system(size: 15))
-                                .foregroundStyle(.tertiary)
-                                .italic()
-                                .padding(.vertical, 5)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    Color.clear.frame(height: 1).id("bottom")
-                }
-                .padding(12)
-            }
-            .onChange(of: model.lines.count) { _, _ in
-                withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
+                SessionHeader(model: model)
             }
         }
-    }
-
-    private var idleHint: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Name the person and press Start.")
-                .foregroundStyle(.secondary)
-            Text("It transcribes both sides — their voice from whichever app is playing audio, yours from the mic. Click a word to save it with its sentence. The transcript is not kept; only saved words are, and MajorTom translates them.")
-                .font(.caption).foregroundStyle(.tertiary)
+        ToolbarItemGroup(placement: .primaryAction) {
+            Toggle(isOn: $floatAboveOthers) {
+                Label("Keep on top", systemImage: floatAboveOthers ? "pin.fill" : "pin")
+            }
+            .help("Keep this window above the call app")
+            if model.isRunning {
+                Button(role: .destructive) { Task { await model.end() } } label: {
+                    Text("End").font(.rounded(13, .bold)).padding(.horizontal, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Palette.bad)
+            }
         }
-        .padding(.bottom, 10)
-    }
-
-    private var savedWordSet: Set<String> {
-        Set(model.saved.map { $0.word.lowercased() })
     }
 
     private func setFloating(_ float: Bool) {
@@ -162,8 +90,105 @@ struct CallView: View {
     }
 }
 
-extension Speaker {
-    /// Their line above yours, so the volatile tail reads in the order you would
-    /// expect rather than whatever the dictionary hands back.
-    static var allCasesInOrder: [Speaker] { [.them, .me] }
+/// Who, how long, and what is being heard — the one line worth glancing at
+/// mid-call.
+private struct SessionHeader: View {
+    let model: SessionModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Avatar(name: model.person, size: 30)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(model.person).font(.rounded(14, .heavy))
+                HStack(spacing: 4) {
+                    if let started = model.startedAt {
+                        TimelineView(.periodic(from: started, by: 1)) { context in
+                            Text(Duration.seconds(context.date.timeIntervalSince(started))
+                                .formatted(.time(pattern: .minuteSecond)))
+                                .monospacedDigit()
+                        }
+                    }
+                    Text("·")
+                    Text(model.tappedApp.map { "hearing \($0)" } ?? "mic only — no app playing audio")
+                        .foregroundStyle(model.tappedApp == nil ? Palette.warmText : Palette.secondary)
+                }
+                .font(.rounded(11, .medium))
+                .foregroundStyle(Palette.secondary)
+            }
+        }
+    }
+}
+
+struct Avatar: View {
+    let name: String
+    var size: CGFloat = 38
+
+    var body: some View {
+        Text(String(name.prefix(1)).uppercased())
+            .font(.rounded(size * 0.45, .heavy))
+            .foregroundStyle(Palette.calls.ink)
+            .frame(width: size, height: size)
+            .background(Palette.calls.fill, in: Circle())
+    }
+}
+
+/// Before a call: who it is with and how they speak.
+private struct SetupView: View {
+    let model: SessionModel
+    @FocusState private var nameFocused: Bool
+
+    var body: some View {
+        VStack(spacing: 22) {
+            Avatar(name: model.person.isEmpty ? "?" : model.person, size: 72)
+
+            VStack(spacing: 6) {
+                Text("Who are you talking to?").font(.rounded(24, .heavy))
+                Text("Both sides are transcribed live. Click any word to keep it with its sentence — the transcript itself is never saved.")
+                    .font(.rounded(14))
+                    .foregroundStyle(Palette.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 400)
+            }
+
+            TextField("Name", text: Binding(get: { model.person }, set: { model.person = $0 }))
+                .textFieldStyle(.plain)
+                .font(.rounded(22, .bold))
+                .multilineTextAlignment(.center)
+                .padding(.vertical, 12)
+                .frame(width: 300)
+                .background(Palette.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .focused($nameFocused)
+
+            Picker("Spoken in", selection: Binding(
+                get: { model.localeIdentifier }, set: { model.localeIdentifier = $0 })) {
+                Text("Germany").tag("de-DE")
+                Text("Austria").tag("de-AT")
+                Text("Switzerland").tag("de-CH")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 300)
+
+            Button {
+                Task { await model.start() }
+            } label: {
+                Label("Start listening", systemImage: "waveform")
+                    .font(.rounded(16, .bold))
+                    .frame(width: 268, height: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.capsule)
+            .keyboardShortcut(.defaultAction)
+            .disabled(model.person.trimmingCharacters(in: .whitespaces).isEmpty)
+
+            if let error = model.error {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.rounded(13, .medium))
+                    .foregroundStyle(Palette.warmText)
+            }
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { nameFocused = model.person.isEmpty }
+    }
 }

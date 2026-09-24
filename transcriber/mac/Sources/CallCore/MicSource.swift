@@ -16,7 +16,7 @@ public final class MicSource {
         // at all. `.measurement` keeps iOS from applying its own processing to
         // audio we are about to transcribe.
         let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.record, mode: .measurement, options: [.allowBluetooth])
+        try audioSession.setCategory(.record, mode: .measurement, options: [.allowBluetoothHFP])
         try audioSession.setActive(true)
         #endif
         let node = engine.inputNode

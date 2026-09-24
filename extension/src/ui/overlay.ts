@@ -18,40 +18,50 @@ export interface OverlayHooks {
 
 const STYLE = `
 :host { all: initial; }
-* { box-sizing: border-box; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+* { box-sizing: border-box; font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif; }
 
 .root {
+  --accent: #6c4df5; --accent-text: #5a3be0;
+  --card: rgba(255,255,255,.97); --card-fg: #1c1c1e; --card-dim: #5e5e63; --raised: #f1eff6;
+  --highlight: #ffe08a; --on-highlight: #2e2100;
   position: absolute; left: 50%; transform: translateX(-50%);
   width: min(92%, 1100px); z-index: 2147483000;
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
   pointer-events: none; user-select: none;
   transition: bottom .18s ease;
+}
+@media (prefers-color-scheme: dark) {
+  .root {
+    --accent: #7f66ff; --accent-text: #b3a5ff;
+    --card: rgba(29,29,34,.97); --card-fg: #e9e9ee; --card-dim: #a3a3ad; --raised: #2c2c34;
+  }
 }
 
 /* Toolbar sits above the lines and only appears when the player is hovered. */
 .bar {
-  display: flex; gap: 4px; align-items: center; padding: 5px;
-  border-radius: 12px; background: rgba(16,16,22,.82);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 2px 14px rgba(0,0,0,.45);
+  display: flex; gap: 2px; align-items: center; padding: 5px;
+  border-radius: 22px; background: rgba(28,28,32,.82);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 6px 20px rgba(0,0,0,.35);
   opacity: 0; transition: opacity .16s ease; pointer-events: auto;
 }
 .root:hover .bar, .bar.pinned { opacity: 1; }
 .bar button {
   all: unset; cursor: pointer; display: grid; place-items: center;
-  width: 38px; height: 34px; border-radius: 8px; color: #cfd2dc;
-  font-size: 17px; line-height: 1;
+  width: 40px; height: 36px; border-radius: 18px; color: #e6e7eb;
 }
+.bar button svg { width: 18px; height: 18px; }
 .bar button:hover { background: rgba(255,255,255,.14); color: #fff; }
-.bar button[aria-pressed="true"] { background: rgba(126,200,227,.26); color: #9fe0f5; }
-.bar .sep { width: 1px; height: 20px; background: rgba(255,255,255,.16); margin: 0 4px; }
+.bar button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.bar button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.bar .sep { width: 1px; height: 20px; background: rgba(255,255,255,.18); margin: 0 4px; }
 
 .line {
   pointer-events: auto; text-align: center; max-width: 100%;
-  padding: .18em .6em; border-radius: 8px;
-  background: rgba(8,8,10,.76);
+  padding: .2em .65em; border-radius: 16px;
+  background: rgba(0,0,0,.66);
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-  line-height: 1.34; text-wrap: balance;
+  line-height: 1.38; text-wrap: balance;
 }
 .line:empty { display: none; }
 /* Re-triggered on every cue change so lines arrive rather than snap. */
@@ -59,50 +69,64 @@ const STYLE = `
 @keyframes mt-in { from { opacity: .2; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .line.swap { animation: none; } }
 
-.primary { font-size: var(--mt-size); font-weight: 550; color: #fff; letter-spacing: .002em; }
+.primary { font-size: var(--mt-size); font-weight: 650; color: #fff; letter-spacing: .002em; }
 .secondary {
-  font-size: calc(var(--mt-size) * .68); color: #b9bdcb; font-weight: 450;
-  background: rgba(8,8,10,.6);
+  font-size: calc(var(--mt-size) * .68); color: #d3d5dc; font-weight: 500;
+  background: rgba(0,0,0,.52);
 }
 /* "Try first" mode: the translation is there, but you have to reach for it. */
 .secondary.blurred { filter: blur(7px); transition: filter .12s ease; cursor: pointer; }
 .secondary.blurred:hover { filter: none; }
 
-.w { cursor: pointer; border-radius: 4px; padding: 0 .04em; transition: background .1s, color .1s; }
-.w:hover { background: rgba(126,200,227,.28); color: #cfefff; }
-.w.saved { color: #ffd479; box-shadow: inset 0 -2px 0 rgba(255,212,121,.55); }
-.w.active { background: rgba(126,200,227,.4); color: #fff; }
+.w { cursor: pointer; border-radius: .3em; padding: 0 .12em; transition: background .1s, color .1s; }
+.w:hover { background: rgba(255,255,255,.2); }
+.w.saved { background: var(--highlight); color: var(--on-highlight); }
+.w.active { background: #fff; color: #1c1c1e; }
 
 .status {
-  pointer-events: none; font-size: 11px; color: #9aa0b0; letter-spacing: .03em;
-  background: rgba(16,16,22,.8); padding: 3px 9px; border-radius: 999px;
+  pointer-events: none; font-size: 12px; font-weight: 600; color: #e6e7eb;
+  background: rgba(28,28,32,.85); padding: 4px 12px; border-radius: 999px;
 }
 .status:empty { display: none; }
 
 /* Word lookup card */
 .card {
-  position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%);
-  min-width: 190px; max-width: 320px; pointer-events: auto;
-  background: rgba(20,20,28,.97); color: #eceef4;
-  border: 1px solid rgba(255,255,255,.1); border-radius: 12px;
-  box-shadow: 0 10px 34px rgba(0,0,0,.55); padding: 11px 13px;
-  font-size: 13px; text-align: left; display: none;
+  position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%);
+  min-width: 230px; max-width: 320px; pointer-events: auto;
+  background: var(--card); color: var(--card-fg);
+  border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,.5);
+  padding: 16px 16px 14px; font-size: 14px; text-align: left; display: none;
 }
 .card.open { display: block; }
-.card .hw { font-size: 16px; font-weight: 650; color: #ffd479; margin-bottom: 3px; word-break: break-word; }
-.card .tr { color: #dfe3ee; min-height: 1.2em; margin-bottom: 9px; line-height: 1.4; }
-.card .tr.dim { color: #7f8598; font-style: italic; }
-.card .row { display: flex; gap: 7px; }
-.card button {
-  all: unset; cursor: pointer; padding: 5px 11px; border-radius: 7px;
-  font-size: 12px; font-weight: 550; text-align: center;
+.card .top { display: flex; align-items: flex-start; gap: 10px; }
+.card .hw { flex: 1; font-size: 24px; font-weight: 800; line-height: 1.15; word-break: break-word; }
+.card .tr { color: var(--accent-text); font-size: 16px; font-weight: 600; min-height: 1.3em; margin: 4px 0 14px; line-height: 1.4; }
+.card .tr.dim { color: var(--card-dim); font-weight: 500; font-style: italic; }
+.card button { all: unset; cursor: pointer; text-align: center; font-weight: 700; }
+.card button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card .save {
+  display: block; width: 100%; box-sizing: border-box; height: 42px; line-height: 42px;
+  border-radius: 21px; background: var(--accent); color: #fff; font-size: 14px;
 }
-.card .save { background: #2f6f8f; color: #eaf7ff; }
-.card .save:hover { background: #3b87ac; }
-.card .save.on { background: #6b5a20; color: #ffd479; }
-.card .close { color: #9aa0b0; }
-.card .close:hover { background: rgba(255,255,255,.1); color: #fff; }
+.card .save:hover { filter: brightness(1.08); }
+.card .save.on { background: var(--highlight); color: var(--on-highlight); }
+.card .close {
+  flex: none; width: 28px; height: 28px; border-radius: 14px; display: grid; place-items: center;
+  background: var(--raised); color: var(--card-dim);
+}
+.card .close svg { width: 12px; height: 12px; }
+.card .close:hover { color: var(--card-fg); }
 `;
+
+const GLYPHS = {
+    previous: 'm15 6-6 6 6 6',
+    next: 'm9 6 6 6-6 6',
+    replay: 'M4 12a8 8 0 1 0 2.5-5.8M4 4v4.5h4.5',
+    eye: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+    pause: 'M8 5v14M16 5v14',
+    loop: 'M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4',
+    close: 'M6 6l12 12M18 6 6 18',
+};
 
 /** Word-ish runs, keeping apostrophes/hyphens inside words. Unicode-aware. */
 const WORD_RE = /[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;
@@ -320,15 +344,16 @@ export class Overlay {
         const card = el('div', 'card');
         this.cardWord = el('div', 'hw');
         this.cardTr = el('div', 'tr');
-
         this.cardSave = el('button', 'save') as HTMLButtonElement;
+
         const close = el('button', 'close') as HTMLButtonElement;
-        close.textContent = 'Close';
+        close.setAttribute('aria-label', 'Close');
+        close.appendChild(icon(GLYPHS.close, {stroke: 3.2}));
         close.addEventListener('click', () => this.closeCard());
 
-        const row = el('div', 'row');
-        row.append(this.cardSave, close);
-        card.append(this.cardWord, this.cardTr, row);
+        const top = el('div', 'top');
+        top.append(this.cardWord, close);
+        card.append(top, this.cardTr, this.cardSave);
         return card;
     }
 
@@ -364,11 +389,9 @@ export class Overlay {
     }
 
     private setSaveButton(saved: boolean): void {
-        this.cardSave.textContent = saved ? '★ Saved' : '+ Save word';
+        this.cardSave.textContent = saved ? 'Saved — click to remove' : 'Save word';
         this.cardSave.classList.toggle('on', saved);
     }
-
-    /* ── Toolbar ────────────────────────────────────────────────────────────── */
 
     private closeCard(): void {
         this.card.classList.remove('open');
@@ -376,15 +399,16 @@ export class Overlay {
         this.activeWord = null;
     }
 
-    /* ── Settings ───────────────────────────────────────────────────────────── */
+    /* ── Toolbar ────────────────────────────────────────────────────────────── */
 
     private buildBar(): HTMLElement {
         const bar = el('div', 'bar');
 
-        const mk = (label: string, title: string, fn: () => void) => {
+        const mk = (glyph: SVGElement, title: string, fn: () => void) => {
             const b = el('button') as HTMLButtonElement;
-            b.textContent = label;
+            b.appendChild(glyph);
             b.title = title;
+            b.setAttribute('aria-label', title);
             b.addEventListener('click', e => {
                 e.stopPropagation();
                 fn();
@@ -393,19 +417,18 @@ export class Overlay {
             return b;
         };
 
-        mk('‹', 'Previous subtitle  [ ', () => this.hooks.seekToCue(-1));
-        mk('⟲', 'Replay this subtitle  \\', () => this.hooks.replayCue());
-        mk('›', 'Next subtitle  ]', () => this.hooks.seekToCue(1));
+        mk(icon(GLYPHS.previous), 'Previous line  [', () => this.hooks.seekToCue(-1));
+        mk(icon(GLYPHS.replay), 'Replay this line  \\', () => this.hooks.replayCue());
+        mk(icon(GLYPHS.next), 'Next line  ]', () => this.hooks.seekToCue(1));
         bar.appendChild(el('div', 'sep'));
 
-        const blur = mk('👁', 'Hide translation until hovered', () => {
-            const v = !this.settings.blurSecondary;
-            this.hooks.patchSettings({blurSecondary: v});
+        const blur = mk(icon(GLYPHS.eye), 'Blur the translation until hovered  H', () => {
+            this.hooks.patchSettings({blurSecondary: !this.settings.blurSecondary});
         });
-        const pause = mk('⏸', 'Auto-pause at the end of each subtitle  P', () => {
+        const pause = mk(icon(GLYPHS.pause, {stroke: 3}), 'Pause after each line  P', () => {
             this.hooks.patchSettings({autoPause: !this.settings.autoPause});
         });
-        const loop = mk('↻', 'Loop this subtitle  L', () => {
+        const loop = mk(icon(GLYPHS.loop), 'Loop this line  L', () => {
             this.hooks.patchSettings({loopCue: !this.settings.loopCue});
         });
 
@@ -419,6 +442,22 @@ function replay(node: HTMLElement): void {
     node.classList.remove('swap');
     void node.offsetWidth; // force reflow so the animation re-runs
     node.classList.add('swap');
+}
+
+/** A stroked 24×24 glyph, built without markup like the rest of the overlay. */
+function icon(d: string, {stroke = 2.2} = {}): SVGElement {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', String(stroke));
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    svg.appendChild(path);
+    return svg;
 }
 
 function el(tag: string, cls = ''): HTMLElement {
