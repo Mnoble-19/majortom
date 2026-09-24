@@ -28,6 +28,16 @@ extension SourceKind {
         case .own: return Palette.Tint(fill: Palette.accentSoft, ink: Palette.accentText)
         }
     }
+
+    /// What one source of this kind is called.
+    var noun: String {
+        switch self {
+        case .show: return "episode"
+        case .call: return "conversation"
+        case .book: return "book"
+        case .own: return "list"
+        }
+    }
 }
 
 struct EmptyState: View {
@@ -237,6 +247,31 @@ struct BackButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(Palette.text)
         .keyboardShortcut("[", modifiers: .command)
+    }
+}
+
+/// Asks before deleting a whole episode, conversation or book.
+private struct ConfirmSourceDeletion: ViewModifier {
+    @EnvironmentObject private var store: Store
+    let source: Source
+    @Binding var isPresented: Bool
+    let then: () -> Void
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("Delete this \(source.kind.noun)?", isPresented: $isPresented) {
+            Button("Delete \(source.itemCount) \(source.itemCount == 1 ? "word" : "words")", role: .destructive) {
+                store.removeSource(source)
+                then()
+            }
+        } message: {
+            Text("“\(source.title)” and everything saved from it leave the library for good.")
+        }
+    }
+}
+
+extension View {
+    func confirmDeleting(_ source: Source, isPresented: Binding<Bool>, then: @escaping () -> Void = {}) -> some View {
+        modifier(ConfirmSourceDeletion(source: source, isPresented: isPresented, then: then))
     }
 }
 

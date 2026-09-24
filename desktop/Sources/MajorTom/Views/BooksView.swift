@@ -91,6 +91,7 @@ private struct BookCover: View {
     let source: Source
     let open: () -> Void
     @State private var hovering = false
+    @State private var deleting = false
 
     private static let tints = [
         Palette.shows, Palette.books, Palette.calls,
@@ -149,5 +150,9 @@ private struct BookCover: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.spring(duration: 0.25), value: hovering)
+        .contextMenu {
+            Button("Delete book…", role: .destructive) { deleting = true }
+        }
+        .confirmDeleting(source, isPresented: $deleting)
     }
 }

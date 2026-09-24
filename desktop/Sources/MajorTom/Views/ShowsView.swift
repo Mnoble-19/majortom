@@ -110,6 +110,7 @@ struct SourceCard: View {
     var showsPlatform = false
     let open: () -> Void
     @State private var hovering = false
+    @State private var deleting = false
 
     var body: some View {
         Button(action: open) {
@@ -150,5 +151,9 @@ struct SourceCard: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
+        .contextMenu {
+            Button("Delete \(source.kind.noun)…", role: .destructive) { deleting = true }
+        }
+        .confirmDeleting(source, isPresented: $deleting)
     }
 }

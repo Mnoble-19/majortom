@@ -157,6 +157,12 @@ final class Store: ObservableObject {
             """, [meaning, sentence, alternatives.joined(separator: "\n"), item.id])
     }
 
+    /// A whole episode, conversation or book: every word saved from it.
+    func removeSource(_ source: Source) {
+        write("UPDATE item SET removed_at = ? WHERE source_id = ? AND removed_at IS NULL",
+              [ISO8601.string(), source.id])
+    }
+
     func remove(_ item: Item) {
         write("UPDATE item SET removed_at = ? WHERE id = ?", [ISO8601.string(), item.id])
     }

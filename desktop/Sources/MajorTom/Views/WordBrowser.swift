@@ -67,6 +67,14 @@ struct WordBrowser<Header: View>: View {
                         ForEach(shown) { item in
                             WordCard(item: item, selected: item.id == selection)
                                 .onTapGesture { selection = item.id == selection ? nil : item.id }
+                                .contextMenu {
+                                    Button(item.status == .learned ? "Move back to learning" : "Mark as learned") {
+                                        store.setLearned(item, item.status != .learned)
+                                    }
+                                    Button(item.starred ? "Unstar" : "Star") { store.toggleStar(item) }
+                                    Divider()
+                                    Button("Delete…", role: .destructive) { confirmingRemoval = item }
+                                }
                         }
                     }
                 }

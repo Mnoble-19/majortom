@@ -6,6 +6,8 @@ struct SourceDetailView: View {
     @EnvironmentObject private var store: Store
     let source: Source
     @State private var reviewing = false
+    @State private var deleting = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let items = store.items(in: source)
@@ -24,6 +26,7 @@ struct SourceDetailView: View {
                 ReviewView(source: live) { reviewing = false }
                     .frame(minWidth: 760, minHeight: 640)
             }
+            .confirmDeleting(live, isPresented: $deleting) { dismiss() }
     }
 
     private func header(_ source: Source) -> some View {
@@ -53,6 +56,12 @@ struct SourceDetailView: View {
                         .buttonStyle(ProminentButtonStyle(fill: source.kind.tint.ink, ink: source.kind.tint.fill))
                 }
                 TranslateButton(scope: .source(source))
+                Button { deleting = true } label: {
+                    Label("Delete \(source.kind.noun)", systemImage: "trash")
+                        .font(.rounded(13, .semibold))
+                }
+                .buttonStyle(.plain)
+                .opacity(0.8)
             }
         }
         .foregroundStyle(source.kind.tint.ink)
