@@ -51,6 +51,8 @@ struct CallView: View {
                     SavedWordsView(words: model.saved, onCorrect: model.recorrect)
                         .frame(width: 260)
                 }
+            } else if let finished = model.finished {
+                SummaryView(finished: finished, onNewCall: model.startOver)
             } else {
                 SetupView(model: model)
             }
@@ -190,5 +192,61 @@ private struct SetupView: View {
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { nameFocused = model.person.isEmpty }
+    }
+}
+
+/// After a call: what was saved, and the way on to translating it. Calls save
+/// words without a meaning; the library app fills those in.
+private struct SummaryView: View {
+    let finished: SessionModel.Finished
+    let onNewCall: () -> Void
+
+    var body: some View {
+        VStack(spacing: 22) {
+            VStack(spacing: 6) {
+                Text("Call with \(finished.person)").font(.rounded(24, .heavy))
+                Text("\(finished.words.count) \(finished.words.count == 1 ? "word" : "words") saved. Translate them in MajorTom, under Calls.")
+                    .font(.rounded(14))
+                    .foregroundStyle(Palette.secondary)
+            }
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(finished.words) { word in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(word.word).font(.rounded(17, .heavy))
+                            Text(word.sentence)
+                                .font(.rounded(13))
+                                .foregroundStyle(Palette.secondary)
+                                .lineLimit(2)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+            }
+            .frame(maxWidth: 460, maxHeight: 280)
+
+            HStack(spacing: 12) {
+                Button("New call", action: onNewCall)
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                Button("Open in MajorTom", action: openLibrary)
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func openLibrary() {
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.majortom.desktop")
+        else { return }
+        NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
     }
 }

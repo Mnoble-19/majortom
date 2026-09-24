@@ -29,9 +29,16 @@ final class SessionModel {
     private(set) var startedAt: Date?
     private(set) var error: String?
     private(set) var tappedApp: String?
+    /// The call that just ended, shown until the next one starts.
+    private(set) var finished: Finished?
+
+    struct Finished {
+        let person: String
+        let words: [SavedWord]
+    }
 
     var person = Settings.lastPerson
-    var localeIdentifier = "de-DE"
+    var localeIdentifier = Settings.locale(forPerson: Settings.lastPerson)
 
     private var session: Session?
     /// Set across the awaits in `start()`, so a second Return or menu click
@@ -47,7 +54,7 @@ final class SessionModel {
         error = nil
         let name = person.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
-            error = "who are you talking to?"
+            error = "Who are you talking to?"
             return
         }
 
@@ -69,6 +76,7 @@ final class SessionModel {
             lines = []
             volatile = ""
             saved = []
+            finished = nil
 
             pump = Task { [weak self] in
                 for await event in session.events {
@@ -89,6 +97,9 @@ final class SessionModel {
     }
 
     func end() async {
+        if !saved.isEmpty {
+            finished = Finished(person: person, words: saved)
+        }
         pump?.cancel()
         pump = nil
         await session?.end()
@@ -99,6 +110,11 @@ final class SessionModel {
         // The transcript is deliberately not kept — only the words above.
         lines = []
         volatile = ""
+    }
+
+    func startOver() {
+        finished = nil
+        saved = []
     }
 
     /// Saves straight away, with no translation. The library app fills those in.
