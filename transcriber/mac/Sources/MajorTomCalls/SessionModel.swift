@@ -34,11 +34,16 @@ final class SessionModel {
     var localeIdentifier = "de-DE"
 
     private var session: Session?
+    /// Set across the awaits in `start()`, so a second Return or menu click
+    /// while the first is still starting does not open a second session.
+    private var starting = false
     private var database: Database?
     private var pump: Task<Void, Never>?
 
     func start() async {
-        guard !isRunning else { return }
+        guard !isRunning, !starting else { return }
+        starting = true
+        defer { starting = false }
         error = nil
         let name = person.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
