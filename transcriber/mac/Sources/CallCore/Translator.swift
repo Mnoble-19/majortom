@@ -90,22 +90,22 @@ public struct ModelTranslator: Sendable {
         self.apiKey = apiKey
     }
 
-    /// Only the word and its one sentence are sent — never more of the
-    /// conversation than the library itself keeps.
-    public func gloss(word: String, sentence: String) async throws -> Gloss {
+    /// `context` is the utterances either side, which is what lets the model
+    /// tell one sense of a word from another.
+    public func gloss(word: String, sentence: String, context: [String] = []) async throws -> Gloss {
         do {
-            return try await ask(word: word, sentence: sentence, schema: true)
+            return try await ask(word: word, sentence: sentence, context: context, schema: true)
         } catch TranslatorError.http(let code, let body) where Self.rejectedTheSchema(code, body) {
             // Not every OpenAI-compatible server implements `response_format`
             // with a JSON schema — Ollama takes a plain `json` mode, some older
             // llama.cpp builds take nothing. Ask again without it and lean on
             // the prompt plus the brace extraction below.
-            return try await ask(word: word, sentence: sentence, schema: false)
+            return try await ask(word: word, sentence: sentence, context: context, schema: false)
         }
     }
 
-    private func ask(word: String, sentence: String, schema: Bool) async throws -> Gloss {
-        let payload = try request(word: word, sentence: sentence, schema: schema)
+    private func ask(word: String, sentence: String, context: [String], schema: Bool) async throws -> Gloss {
+        let payload = try request(word: word, sentence: sentence, context: context, schema: schema)
         let (data, response) = try await URLSession.shared.data(for: payload)
 
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -201,7 +201,7 @@ public struct ModelTranslator: Sendable {
         return try JSONDecoder().decode(ModelList.self, from: data).data.map(\.id)
     }
 
-    private func request(word: String, sentence: String, schema: Bool) throws -> URLRequest {
+    private func request(word: String, sentence: String, context: [String], schema: Bool) throws -> URLRequest {
         guard !settings.endpoint.isEmpty, let base = URL(string: settings.endpoint) else {
             throw TranslatorError.badEndpoint(settings.endpoint)
         }
@@ -214,7 +214,7 @@ public struct ModelTranslator: Sendable {
             "max_tokens": 900,
             "messages": [
                 ["role": "system", "content": Self.systemPrompt],
-                ["role": "user", "content": "word: \(word)\nsentence: \(sentence)"]
+                ["role": "user", "content": Self.userPrompt(word: word, sentence: sentence, context: context)]
             ],
         ]
         if schema {
@@ -255,7 +255,7 @@ public struct ModelTranslator: Sendable {
 
     private static let systemPrompt = """
         You help someone learning German. You are given a German word or phrase \
-        and the sentence it was spoken in.
+        and the sentence it was spoken in, sometimes with the lines around it.
 
         Fill in the fields. `dictionary_form` is the infinitive for a verb, or \
         the nominative singular with its article for a noun. `english_meaning` \
@@ -267,6 +267,15 @@ public struct ModelTranslator: Sendable {
         leave it empty if there are none. Write English in the English fields \
         and German in the German one.
         """
+
+    private static func userPrompt(word: String, sentence: String, context: [String]) -> String {
+        var lines = ["word: \(word)", "sentence: \(sentence)"]
+        if !context.isEmpty {
+            lines.append("surrounding conversation:")
+            lines.append(contentsOf: context.map { "  \($0)" })
+        }
+        return lines.joined(separator: "\n")
+    }
 
     // MARK: - Wire types
 
@@ -326,7 +335,7 @@ public struct Translator: Sendable {
     /// Yields the fast answer first, then the good one. Either may be missing:
     /// with no language pack there is no fast answer, with no model running
     /// there is no good one, and with neither the stream simply ends empty.
-    public func glosses(word: String, sentence: String) -> AsyncStream<Gloss> {
+    public func glosses(word: String, sentence: String, context: [String] = []) -> AsyncStream<Gloss> {
         AsyncStream { continuation in
             let task = Task {
                 if let quick = try? await apple.gloss(word: word, sentence: sentence) {
@@ -334,7 +343,7 @@ public struct Translator: Sendable {
                 }
                 if settings.enabled, !settings.model.isEmpty {
                     let model = ModelTranslator(settings: settings, apiKey: apiKey)
-                    if let better = try? await model.gloss(word: word, sentence: sentence) {
+                    if let better = try? await model.gloss(word: word, sentence: sentence, context: context) {
                         continuation.yield(better)
                     }
                 }
