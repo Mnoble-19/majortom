@@ -3,23 +3,17 @@ import CoreMedia
 import Foundation
 import Speech
 
-public enum Speaker: String, Sendable, Hashable, Codable {
-    case them, me
-}
-
 /// A phrase the recognizer has committed to. Words still being revised arrive
 /// as `.volatile` and only become a line once the recognizer finalizes them —
 /// so a line never changes under you after you have clicked a word in it.
 public struct Line: Sendable, Identifiable, Hashable, Codable {
     public let id: UUID
-    public let speaker: Speaker
     public let text: String
     /// Seconds from the start of the session. Becomes `item.position`.
     public let start: TimeInterval
 
-    public init(id: UUID = UUID(), speaker: Speaker, text: String, start: TimeInterval) {
+    public init(id: UUID = UUID(), text: String, start: TimeInterval) {
         self.id = id
-        self.speaker = speaker
         self.text = text
         self.start = start
     }
@@ -56,7 +50,7 @@ public enum SpeechTranscriberLocales {
 
 public enum TranscriptEvent: Sendable {
     case line(Line)
-    case volatile(speaker: Speaker, text: String)
+    case volatile(String)
 }
 
 public enum TranscriberError: Error, CustomStringConvertible {
@@ -69,20 +63,15 @@ public enum TranscriberError: Error, CustomStringConvertible {
     }
 }
 
-/// One recognizer over one audio track. A call runs two: one on the other
-/// party's audio, one on the mic. That is what makes the speaker label free —
-/// the track the audio arrived on *is* the answer, so no diarization is needed.
+/// One recognizer over one audio track: the other side of a call on the Mac,
+/// or the room on the phone.
 ///
-/// It is also what puts the line breaks in the right places. The recognizer
-/// only commits a line after roughly three and a half seconds of silence, which
-/// sounds far too long until you notice that each track *is* silent that long —
-/// whenever the other person is the one talking. So lines fall on turn
-/// boundaries. Forcing them to commit sooner was tried and is a dead end:
+/// The recognizer only commits a line after roughly three and a half seconds of
+/// silence. On a call that lands on turn boundaries, because the other
+/// person's track is silent whenever you are the one talking. Forcing them to commit sooner was tried and is a dead end:
 /// `SpeechAnalyzer.finalize(through:)` truncates the phrase it cuts, dropping
 /// words, which is the one thing this app cannot afford to do.
 public final class Transcriber: @unchecked Sendable {
-    public let speaker: Speaker
-
     /// Which recognizer is doing the work.
     public enum Engine: String, Sendable {
         /// The iOS 26 / macOS 26 model. Better, but not on every device —
@@ -130,9 +119,7 @@ public final class Transcriber: @unchecked Sendable {
     private let emit: AsyncStream<TranscriptEvent>.Continuation
     private var pump: Task<Void, Never>?
 
-    public init(locale: Locale, speaker: Speaker) {
-        self.speaker = speaker
-
+    public init(locale: Locale) {
         engine = Transcriber.availableEngine
         if engine == .speechTranscriber {
             recognizer = .modern(SpeechTranscriber(
@@ -233,13 +220,13 @@ public final class Transcriber: @unchecked Sendable {
     private func handle(text attributed: AttributedString, range: CMTimeRange, isFinal: Bool) {
         let text = String(attributed.characters)
         guard isFinal else {
-            emit.yield(.volatile(speaker: speaker, text: text))
+            emit.yield(.volatile(text))
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let start = range.start.seconds
-        emit.yield(.line(Line(speaker: speaker, text: trimmed, start: start.isFinite ? start : 0)))
+        emit.yield(.line(Line(text: trimmed, start: start.isFinite ? start : 0)))
     }
 
     private func resample(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {

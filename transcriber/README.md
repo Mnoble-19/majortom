@@ -9,11 +9,11 @@ audio and talks to a local model, which the browser extension never needs to do.
 
 ## The flow
 
-**On the Mac.** Start a session and name the other person. The app captures two
-audio tracks — their voice from whichever app is playing audio, your voice from
-the mic — and transcribes both on device. The transcript scrolls on screen. Click a word: a
-local LLM translates it together with the sentence it came from, and the pair is
-written to the database. End the session and the transcript is deleted. Only the
+**On the Mac.** Start the call, then start a session and name the other person.
+The app captures their voice from whichever app is playing audio and
+transcribes it on device; your own side is not captured. The transcript scrolls
+on screen. Click a word and it is written to the database with its sentence;
+the library app translates it afterwards. End the session and the transcript is deleted. Only the
 words you saved survive.
 
 **In person.** Same screen on the phone, but no model on the device, so words are
@@ -36,13 +36,12 @@ deliberate trade.
 | Piece | Status |
 |-------|--------|
 | German transcription, on device | works |
-| Mic capture | works |
+| Mic capture (phone only) | works |
 | Other party's audio (process tap) | works |
 | Writing to the MajorTom database | works |
-| Two tracks running as one session | works |
 | Click-to-translate, local model | works |
-| The window | built, not yet used on a real call |
-| iPhone app | builds and launches; never run on real hardware |
+| The window | used on a real WhatsApp call |
+| iPhone app | runs on an iPhone 15 Plus |
 | Sync over local wifi | works — discovery and round trip both verified |
 
 ```bash
@@ -216,10 +215,10 @@ the word you were trying to save.
 mac/
   Sources/
     CallCore/
-      Transcriber.swift      one recognizer per track
-      MicSource.swift        your voice
+      Transcriber.swift      one recognizer over one audio track
+      MicSource.swift        the phone's microphone
       ProcessTapSource.swift their voice, tapped from the call app
-      Session.swift          both tracks as one call; transcript stays in memory
+      Session.swift          one call; transcript stays in memory
       Translator.swift       Apple translation + any OpenAI-compatible endpoint
       Settings.swift         endpoint config; the API key lives in the keychain
       Database.swift         writes into the desktop app's SQLite file

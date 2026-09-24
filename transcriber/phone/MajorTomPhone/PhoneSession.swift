@@ -4,9 +4,6 @@ import Observation
 
 /// An in-person conversation. Much smaller than the Mac's `Session`: one mic,
 /// one recognizer, no database, no translation.
-///
-/// There is only one audio track here, so unlike on a call there is no free
-/// speaker labelling — everything in the room arrives on the same microphone.
 @MainActor
 @Observable
 final class PhoneSession {
@@ -73,7 +70,7 @@ final class PhoneSession {
         volatile = ""
 
         do {
-            let transcriber = Transcriber(locale: Locale(identifier: localeIdentifier), speaker: .them)
+            let transcriber = Transcriber(locale: Locale(identifier: localeIdentifier))
             try await transcriber.start()
             let mic = MicSource()
             try mic.start { buffer, time in transcriber.append(buffer, at: time) }
@@ -88,7 +85,7 @@ final class PhoneSession {
                     case .line(let line):
                         self.lines.append(line)
                         self.volatile = ""
-                    case .volatile(_, let text):
+                    case .volatile(let text):
                         self.volatile = text
                     }
                 }

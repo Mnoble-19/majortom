@@ -2,18 +2,19 @@ import CallCore
 import MajorTomStyle
 import SwiftUI
 
-/// The live conversation as a chat: their lines on the left, yours on the
-/// right. The speaker comes free from which audio track a line arrived on.
+/// What the other person says, line by line. Every committed word can be
+/// clicked to save it.
 struct TranscriptView: View {
     let model: SessionModel
 
     var body: some View {
         ScrollViewReader { scroll in
             ScrollView {
-                LazyVStack(spacing: 10) {
+                LazyVStack(alignment: .leading, spacing: 10) {
                     Text("Click any word to save it")
                         .font(.rounded(12, .semibold))
                         .foregroundStyle(Palette.tertiary)
+                        .frame(maxWidth: .infinity)
                         .padding(.bottom, 6)
 
                     if let error = model.error {
@@ -23,13 +24,12 @@ struct TranscriptView: View {
                     }
 
                     ForEach(model.lines) { line in
-                        Bubble(isMine: line.speaker == .me) {
+                        Bubble {
                             FlowLayout(spacing: 3, lineSpacing: 3) {
                                 ForEach(Array(line.text.split(separator: " ").enumerated()), id: \.offset) { _, token in
                                     let word = String(token)
                                     WordButton(
                                         word: word,
-                                        isMine: line.speaker == .me,
                                         isSaved: savedWords.contains(Self.bare(word)),
                                         action: { model.save(word: word, from: line) })
                                 }
@@ -40,11 +40,9 @@ struct TranscriptView: View {
 
                     // Heard but not committed. Not clickable: it is still being
                     // revised, so a word here can change under the click.
-                    ForEach(Speaker.allCasesInOrder, id: \.self) { speaker in
-                        if let text = model.volatile[speaker], !text.isEmpty {
-                            Bubble(isMine: speaker == .me, faded: true) {
-                                Text(text).font(.rounded(18)).italic()
-                            }
+                    if !model.volatile.isEmpty {
+                        Bubble(faded: true) {
+                            Text(model.volatile).font(.rounded(18)).italic()
                         }
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -69,40 +67,25 @@ struct TranscriptView: View {
     }
 }
 
-extension Speaker {
-    /// Their line above yours, so the volatile tail reads in the order you would
-    /// expect rather than whatever the dictionary hands back.
-    static var allCasesInOrder: [Speaker] { [.them, .me] }
-}
-
 private struct Bubble<Content: View>: View {
-    let isMine: Bool
     var faded = false
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        HStack {
-            if isMine { Spacer(minLength: 80) }
-            content()
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
-                .foregroundStyle(isMine ? .white : Palette.text)
-                .background(isMine ? Palette.accent : Palette.card, in: shape)
-                .opacity(faded ? 0.55 : 1)
-            if !isMine { Spacer(minLength: 80) }
-        }
-    }
-
-    private var shape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 20, bottomLeadingRadius: isMine ? 20 : 6,
-            bottomTrailingRadius: isMine ? 6 : 20, topTrailingRadius: 20, style: .continuous)
+        content()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .foregroundStyle(Palette.text)
+            .background(Palette.card, in: UnevenRoundedRectangle(
+                topLeadingRadius: 20, bottomLeadingRadius: 6,
+                bottomTrailingRadius: 20, topTrailingRadius: 20, style: .continuous))
+            .opacity(faded ? 0.55 : 1)
+            .padding(.trailing, 60)
     }
 }
 
 private struct WordButton: View {
     let word: String
-    let isMine: Bool
     let isSaved: Bool
     let action: () -> Void
     @State private var hovering = false
@@ -112,17 +95,12 @@ private struct WordButton: View {
             .font(.rounded(18, isSaved ? .bold : .regular))
             .padding(.horizontal, 3)
             .padding(.vertical, 1)
-            .foregroundStyle(isSaved ? Palette.onHighlight : isMine ? .white : Palette.text)
-            .background(background, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .foregroundStyle(isSaved ? Palette.onHighlight : Palette.text)
+            .background(isSaved ? Palette.highlight : hovering ? Palette.raised : .clear,
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .onTapGesture(perform: action)
-    }
-
-    private var background: Color {
-        if isSaved { return Palette.highlight }
-        if hovering { return isMine ? .white.opacity(0.22) : Palette.raised }
-        return .clear
     }
 }
 

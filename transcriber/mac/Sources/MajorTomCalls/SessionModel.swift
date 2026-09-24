@@ -23,7 +23,7 @@ struct SavedWord: Identifiable, Equatable {
 @Observable
 final class SessionModel {
     private(set) var lines: [Line] = []
-    private(set) var volatile: [Speaker: String] = [:]
+    private(set) var volatile = ""
     private(set) var saved: [SavedWord] = []
     private(set) var isRunning = false
     private(set) var startedAt: Date?
@@ -67,7 +67,7 @@ final class SessionModel {
             startedAt = Date()
             isRunning = true
             lines = []
-            volatile = [:]
+            volatile = ""
             saved = []
 
             pump = Task { [weak self] in
@@ -76,9 +76,9 @@ final class SessionModel {
                     switch event {
                     case .line(let line):
                         self.lines.append(line)
-                        self.volatile[line.speaker] = ""
-                    case .volatile(let speaker, let text):
-                        self.volatile[speaker] = text
+                        self.volatile = ""
+                    case .volatile(let text):
+                        self.volatile = text
                     }
                 }
             }
@@ -98,7 +98,7 @@ final class SessionModel {
         tappedApp = nil
         // The transcript is deliberately not kept — only the words above.
         lines = []
-        volatile = [:]
+        volatile = ""
     }
 
     /// Saves straight away, with no translation. The library app fills those in.
@@ -119,7 +119,7 @@ final class SessionModel {
         let word = newWord.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !word.isEmpty, word != saved[index].word else { return }
 
-        let line = Line(speaker: .them, text: saved[index].sentence, start: saved[index].position)
+        let line = Line(text: saved[index].sentence, start: saved[index].position)
         try? session.correct(saved[index].word, to: word, from: line)
         saved[index].word = word
     }

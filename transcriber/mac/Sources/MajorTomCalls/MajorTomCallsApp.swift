@@ -108,9 +108,9 @@ private struct SessionHeader: View {
                                 .monospacedDigit()
                         }
                     }
-                    Text("·")
-                    Text(model.tappedApp.map { "hearing \($0)" } ?? "mic only — no app playing audio")
-                        .foregroundStyle(model.tappedApp == nil ? Palette.warmText : Palette.secondary)
+                    if let app = model.tappedApp {
+                        Text("· hearing \(app)")
+                    }
                 }
                 .font(.rounded(11, .medium))
                 .foregroundStyle(Palette.secondary)
@@ -143,7 +143,7 @@ private struct SetupView: View {
 
             VStack(spacing: 6) {
                 Text("Who are you talking to?").font(.rounded(24, .heavy))
-                Text("Both sides are transcribed live. Click any word to keep it with its sentence — the transcript itself is never saved.")
+                Text("Start the call first. What they say is transcribed live; click any word to keep it with its sentence. The transcript itself is never saved.")
                     .font(.rounded(14))
                     .foregroundStyle(Palette.secondary)
                     .multilineTextAlignment(.center)

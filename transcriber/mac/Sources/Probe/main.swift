@@ -84,8 +84,7 @@ if arguments.first == "--db" {
     let sessionID = UUID().uuidString
     let sourceID = try database.upsertSource(title: "Call with Ana — 2026-09-23",
                                              person: "Ana", sessionID: sessionID)
-    let line = Line(speaker: .them,
-                    text: "Das war ziemlich beharrlich von ihm. Sie hat nicht nachgegeben.",
+    let line = Line(text: "Das war ziemlich beharrlich von ihm. Sie hat nicht nachgegeben.",
                     start: 142)
 
     try database.upsertItem(sourceID: sourceID, text: "beharrlich", translation: "",
@@ -302,7 +301,7 @@ try await Transcriber.ensureModel(locale: locale) { fraction in
 }
 print("model ready")
 
-let transcriber = Transcriber(locale: locale, speaker: .them)
+let transcriber = Transcriber(locale: locale)
 try await transcriber.start()
 
 let printer = Task {
@@ -310,7 +309,7 @@ let printer = Task {
         switch event {
         case .line(let line):
             print(String(format: "\u{1B}[2K\r[%6.1fs] %@", line.start, line.text))
-        case .volatile(_, let text):
+        case .volatile(let text):
             print("\u{1B}[2K\r         … \(text)", terminator: "")
             fflush(stdout)
         }
