@@ -189,12 +189,18 @@ struct TranslateButton: View {
 
         HStack(spacing: 12) {
             if let outcome = translations.outcome, !translations.running {
-                Text(outcome.message)
-                    .font(.rounded(13, .medium))
-                    .foregroundStyle(outcome.isFailure ? Palette.warmText : Palette.goodText)
-                    .multilineTextAlignment(.trailing)
-                    .lineLimit(3)
-                    .frame(maxWidth: 340, alignment: .trailing)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(outcome.message)
+                        .font(.rounded(13, .medium))
+                        .foregroundStyle(outcome.isFailure ? Palette.warmText : Palette.goodText)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(3)
+                    if outcome.isFailure {
+                        SettingsLink { Text("Open Settings") }
+                            .font(.rounded(13, .semibold))
+                    }
+                }
+                .frame(maxWidth: 340, alignment: .trailing)
             }
             if translations.running {
                 ProgressView(value: Double(translations.done), total: Double(max(1, translations.total)))

@@ -50,7 +50,8 @@ final class Translations: ObservableObject {
         outcome = nil
 
         Task {
-            let translator = Translator(settings: Settings.llm, apiKey: Settings.apiKey)
+            let settings = await Self.modelSettings()
+            let translator = Translator(settings: settings ?? Settings.llm, apiKey: Settings.apiKey)
             var filled = 0
             for item in pending {
                 var best: Gloss?
@@ -65,7 +66,7 @@ final class Translations: ObservableObject {
             }
             running = false
             let result: Outcome = filled > 0 ? .translated(filled)
-                : Self.modelConfigured ? .failed("The model could not be reached — is it running?")
+                : settings != nil ? .failed("The model could not be reached — is it running?")
                 : .unavailable
             outcome = result
             // A success fades on its own; a failure stays until it is fixed.
@@ -79,8 +80,8 @@ final class Translations: ObservableObject {
     /// One word, from the model when there is one. Leaves the library alone:
     /// the caller decides whether the answer replaces what is there.
     func check(_ item: Item) async throws -> Gloss {
-        if Self.modelConfigured {
-            return try await ModelTranslator(settings: Settings.llm, apiKey: Settings.apiKey)
+        if let settings = await Self.modelSettings() {
+            return try await ModelTranslator(settings: settings, apiKey: Settings.apiKey)
                 .gloss(word: item.text, sentence: item.context)
         }
         return try await AppleTranslator().gloss(word: item.text, sentence: item.context)
@@ -90,7 +91,18 @@ final class Translations: ObservableObject {
         outcome = nil
     }
 
-    private static var modelConfigured: Bool {
-        Settings.llm.enabled && !Settings.llm.model.isEmpty
+    /// The model to use, or nil for none. With none picked yet, takes the
+    /// first one the endpoint lists and remembers it, so a running server
+    /// works without a trip to Settings.
+    private static func modelSettings() async -> LLMSettings? {
+        var settings = Settings.llm
+        guard settings.enabled, !settings.endpoint.isEmpty else { return nil }
+        if settings.model.isEmpty {
+            let listed = try? await ModelTranslator(settings: settings, apiKey: Settings.apiKey).models()
+            guard let first = listed?.first else { return nil }
+            settings.model = first
+            Settings.llm = settings
+        }
+        return settings
     }
 }

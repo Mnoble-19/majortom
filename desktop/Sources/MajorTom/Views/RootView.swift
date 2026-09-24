@@ -85,6 +85,17 @@ struct RootView: View {
             }
         }
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
+        .safeAreaInset(edge: .bottom) {
+            SettingsLink {
+                Label("Settings", systemImage: "gearshape")
+                    .font(.rounded(13, .medium))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Palette.secondary)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+        }
     }
 
     /// The tag goes last: a List only reads it off the row's outermost view.
