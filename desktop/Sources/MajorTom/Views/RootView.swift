@@ -100,11 +100,7 @@ struct RootView: View {
                     onOpenShow: { path.append(.source($0)) }
                 )
             case .call:
-                EmptyState(
-                    icon: SourceKind.call.icon,
-                    title: "No calls yet",
-                    message: "Keywords from practice calls will collect here once transcription is wired up."
-                )
+                CallsView(onOpenCall: { path.append(.source($0)) }, store: store)
             case .book:
                 BooksView(onOpenBook: { path.append(.source($0)) }, store: store)
             }

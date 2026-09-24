@@ -155,31 +155,14 @@ private struct SavedWordRow: View {
                         editing = nil
                     }
 
-                switch word.state {
-                case .translating:
-                    ProgressView().controlSize(.small)
-                case .done:
-                    EmptyView()
-                case .failed:
-                    Image(systemName: "exclamationmark.triangle")
-                        .foregroundStyle(.orange).font(.caption)
-                }
             }
 
-            if let gloss = word.gloss {
-                Text(gloss.meaning)
-                    .font(.system(size: 13))
-                    .foregroundStyle(word.state == .done ? .primary : .secondary)
-                if gloss.dictionaryForm.lowercased() != word.word.lowercased() {
-                    Text(gloss.dictionaryForm)
-                        .font(.caption).foregroundStyle(.tertiary)
-                }
-                Text(gloss.sentence)
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.top, 1)
-            } else if case .failed(let reason) = word.state {
-                Text(reason).font(.caption).foregroundStyle(.orange)
-            }
+            // No translation here on purpose: it happens in MajorTom, against
+            // the whole library, once the model is reachable.
+            Text(word.sentence)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

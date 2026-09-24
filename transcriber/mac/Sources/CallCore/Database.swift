@@ -183,6 +183,16 @@ public final class Database: @unchecked Sendable {
         )
     }
 
+    /// Everything still waiting for a translation, across every source. Words
+    /// saved on the phone arrive untranslated and the model is often not
+    /// running when they land, so the backlog has to be drainable later rather
+    /// than only at the moment of import.
+    public func untranslatedItems() throws -> [(id: Int64, text: String, context: String)] {
+        try query(
+            "SELECT id, text, context FROM item WHERE translation = '' ORDER BY id;"
+        ) { ($0.int(0), $0.string(1), $0.string(2)) }
+    }
+
     /// Items still waiting for a translation — what the phone produces, and
     /// what the fill-in pass consumes.
     public func untranslatedItems(sourceID: Int64) throws -> [(id: Int64, text: String, context: String)] {

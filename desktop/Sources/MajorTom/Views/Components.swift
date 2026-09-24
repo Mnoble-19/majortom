@@ -97,13 +97,15 @@ struct PlatformCard: View {
 struct ShowCard: View {
     let source: Source
     var showsPlatform: Bool = false
+    /// Calls reuse this card; only the glyph differs.
+    var icon: String = "play.rectangle.fill"
     let onOpen: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: "play.rectangle.fill")
+                Image(systemName: icon)
                     .font(.system(size: 20))
                     .foregroundStyle(Theme.accent.opacity(hovering ? 1 : 0.7))
 

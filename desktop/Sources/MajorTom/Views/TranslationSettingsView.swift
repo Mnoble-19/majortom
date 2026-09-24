@@ -1,15 +1,19 @@
 import CallCore
 import SwiftUI
 
-/// Endpoint, key, model, and a Test button that actually translates something
-/// rather than just checking the port is open.
-struct SettingsView: View {
+/// Where the local model lives, and a Test that actually translates something
+/// rather than only checking the port is open.
+///
+/// This is in the library app rather than the calls app because translating is
+/// a library job: words arrive untranslated from the phone, from the reMarkable
+/// with no wifi, and from the browser when DeepL is down, and all of them get
+/// filled in from here.
+struct TranslationSettingsView: View {
     @State private var settings = Settings.llm
     @State private var apiKey = Settings.apiKey
     @State private var models: [String] = []
     @State private var result: Result?
     @State private var busy = false
-    @State private var appleReady: Bool?
 
     private enum Result {
         case ok(Gloss, TimeInterval)
@@ -21,7 +25,6 @@ struct SettingsView: View {
             Section("Local model") {
                 TextField("Endpoint", text: $settings.endpoint,
                           prompt: Text("http://localhost:9931/v1"))
-                    .textContentType(.URL)
 
                 SecureField("API key", text: $apiKey,
                             prompt: Text("leave empty for a local model"))
@@ -70,30 +73,8 @@ struct SettingsView: View {
                         .foregroundStyle(.red).font(.callout)
                         .textSelection(.enabled)
                 case nil:
-                    Text("Translates a real sentence, so a wrong model name shows up here rather than mid-call.")
+                    Text("Translates a real sentence, so a wrong model name shows up here rather than silently leaving words blank.")
                         .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Apple translation") {
-                switch appleReady {
-                case true:
-                    Label("German → English installed", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green).font(.callout)
-                    Text("Used for an instant first answer while the model thinks.")
-                        .font(.caption).foregroundStyle(.secondary)
-                case false:
-                    Label("German → English not installed", systemImage: "arrow.down.circle")
-                        .font(.callout)
-                    Text("Optional. Without it, saved words wait for the model instead of showing a rough translation immediately.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("Open Language & Region") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }
-                case nil:
-                    ProgressView().controlSize(.small)
                 }
             }
         }
@@ -101,7 +82,6 @@ struct SettingsView: View {
         .frame(width: 460)
         .onChange(of: settings) { _, new in Settings.llm = new }
         .onChange(of: apiKey) { _, new in Settings.apiKey = new }
-        .task { appleReady = await AppleTranslator().isAvailable() }
     }
 
     private func fetchModels() async {
@@ -109,8 +89,9 @@ struct SettingsView: View {
         defer { busy = false }
         do {
             models = try await ModelTranslator(settings: settings, apiKey: apiKey).models()
-            if settings.model.isEmpty { settings.model = models.first ?? "" }
-            if !models.contains(settings.model) { settings.model = models.first ?? "" }
+            if settings.model.isEmpty || !models.contains(settings.model) {
+                settings.model = models.first ?? ""
+            }
         } catch {
             result = .bad("\(error)")
         }

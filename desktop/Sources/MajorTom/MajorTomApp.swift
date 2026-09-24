@@ -22,5 +22,7 @@ struct MajorTomApp: App {
         }
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1080, height: 700)
+
+        Settings { TranslationSettingsView() }
     }
 }

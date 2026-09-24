@@ -5,20 +5,13 @@ import SwiftUI
 @main
 struct MajorTomCallsApp: App {
     @State private var model = SessionModel()
-    @State private var syncHost = SyncHost()
 
     var body: some Scene {
         Window("Calls", id: "calls") {
-            CallView(model: model, syncHost: syncHost)
+            CallView(model: model)
                 .frame(minWidth: 620, minHeight: 420)
-                // Listening runs for as long as the app is open: the phone
-                // syncs whenever the two are near each other, which is rarely
-                // while you happen to be on a call.
-                .task { syncHost.start() }
         }
         .defaultSize(width: 760, height: 540)
-
-        Settings { SettingsView() }
 
         // The window has to stay reachable while the call app is in front, and a
         // menu bar item is the one place that is always visible. Starting a
@@ -45,8 +38,6 @@ struct MajorTomCallsApp: App {
 
 struct CallView: View {
     let model: SessionModel
-    let syncHost: SyncHost
-    @Environment(\.openSettings) private var openSettings
     @State private var floatAboveOthers = true
 
     var body: some View {
@@ -58,10 +49,7 @@ struct CallView: View {
                 SavedWordsView(words: model.saved, onCorrect: model.recorrect)
                     .frame(minWidth: 230)
             }
-            Divider()
-            syncStatus
         }
-        .task { await model.refreshTranslationAvailability() }
         .onChange(of: floatAboveOthers) { _, float in setFloating(float) }
         .onAppear { setFloating(floatAboveOthers) }
     }
@@ -104,8 +92,6 @@ struct CallView: View {
             Toggle("Float", isOn: $floatAboveOthers)
                 .toggleStyle(.checkbox)
                 .help("Keep this window above the call app")
-            Button { openSettings() } label: { Image(systemName: "gearshape") }
-                .buttonStyle(.borderless)
         }
         .padding(10)
     }
@@ -159,43 +145,10 @@ struct CallView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Name the person and press Start.")
                 .foregroundStyle(.secondary)
-            Text("It transcribes both sides — their voice from whichever app is playing audio, yours from the mic. Click a word to save it with its sentence. The transcript is not kept; only saved words are.")
+            Text("It transcribes both sides — their voice from whichever app is playing audio, yours from the mic. Click a word to save it with its sentence. The transcript is not kept; only saved words are, and MajorTom translates them.")
                 .font(.caption).foregroundStyle(.tertiary)
-            if !model.appleTranslationReady {
-                Text("Apple's German translation is not installed, so saved words wait for the local model rather than showing a rough answer first. Settings explains where to turn it on.")
-                    .font(.caption).foregroundStyle(.tertiary)
-            }
         }
         .padding(.bottom, 10)
-    }
-
-    /// Quiet unless something happens, but present, because "is it listening?"
-    /// is otherwise unanswerable from the phone end.
-    private var syncStatus: some View {
-        HStack(spacing: 6) {
-            if let failure = syncHost.failure {
-                Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-                Text(failure).foregroundStyle(.orange)
-            } else if let arrival = syncHost.arrivals.first {
-                Image(systemName: "iphone.and.arrow.forward.inward")
-                Text("\(arrival.person): \(arrival.words) word\(arrival.words == 1 ? "" : "s")")
-                if let translated = arrival.translated, translated < arrival.words {
-                    ProgressView().controlSize(.small)
-                    Text("translating \(translated)/\(arrival.words)").foregroundStyle(.secondary)
-                } else {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                }
-            } else {
-                Image(systemName: syncHost.isListening ? "wifi" : "wifi.slash")
-                    .foregroundStyle(.secondary)
-                Text(syncHost.isListening ? "Ready for your phone" : "Not listening")
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .font(.caption)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
     }
 
     private var savedWordSet: Set<String> {
