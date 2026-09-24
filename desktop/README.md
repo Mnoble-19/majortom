@@ -192,13 +192,3 @@ Sources/MajorTom/
   Views/                 RootView, PlatformsView, BooksView, SourceDetailView, Components
 ```
 
-```aiignore
-curl http://127.0.0.1:8888/v1/chat/completions \
-  -H "Authorization: Bearer not-needed" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "ajgazin/Swift-Qwen3.8-27B-Uncensored-Dynamic-MTP-GGUF:UD-Q4_K_XL",
-    "messages": [{"role": "user", "content": "What is Unsloth?"}],
-    "stream": false
-  }'
-```
