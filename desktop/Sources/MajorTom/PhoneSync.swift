@@ -17,12 +17,16 @@ final class PhoneSync: ObservableObject {
         self.onArrival = onArrival
     }
 
+    func clearArrival() {
+        lastArrival = nil
+    }
+
     func start() {
         guard server == nil else { return }
         do {
             let server = SyncServer(database: try CallCore.Database()) { [weak self] report in
                 Task { @MainActor in
-                    self?.lastArrival = "\(report.words) from your phone (\(report.person))"
+                    self?.lastArrival = "\(report.words) \(report.words == 1 ? "word" : "words") from your phone (\(report.person))"
                     self?.onArrival()
                 }
             }

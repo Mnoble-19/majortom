@@ -24,7 +24,7 @@ struct CallsView: View {
                             TranslateButton(scope: .kind(.call))
                         }
                         if let arrival = phone.lastArrival {
-                            Banner(message: arrival)
+                            Banner(message: arrival) { phone.clearArrival() }
                         }
                         ForEach(people(in: calls), id: \.name) { person in
                             VStack(alignment: .leading, spacing: 14) {
@@ -52,7 +52,10 @@ struct CallsView: View {
     /// Whether the phone can reach this Mac, because the only other way to
     /// find out is to try from the phone and have it fail.
     private var phoneStatus: String {
-        phone.listening ? "Ready for your phone" : "Not listening — your phone will not find this Mac"
+        if let failure = phone.failure {
+            return "Not listening for your phone: \(failure)"
+        }
+        return phone.listening ? "Ready for your phone" : "Starting to listen for your phone…"
     }
 
     private struct Person {
