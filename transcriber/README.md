@@ -33,9 +33,8 @@ deliberate trade.
 
 What is kept, all of it:
 
-- each word or phrase you click, with the sentence around it — cut to at most
-  ten words either side, since the recognizer often leaves out the punctuation
-  that would end a sentence;
+- each word or phrase you click, with the sentence around it, which you can
+  edit or trim in the list of saved words;
 - the other person's name and the date, to group the words by conversation;
 - on the phone, the same, in a small file until it is sent to the Mac.
 
