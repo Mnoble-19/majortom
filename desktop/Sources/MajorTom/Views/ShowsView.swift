@@ -111,6 +111,7 @@ struct SourceCard: View {
     let open: () -> Void
     @State private var hovering = false
     @State private var deleting = false
+    @State private var renaming = false
 
     var body: some View {
         Button(action: open) {
@@ -152,8 +153,10 @@ struct SourceCard: View {
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
         .contextMenu {
+            Button("Rename…") { renaming = true }
             Button("Delete \(source.kind.noun)…", role: .destructive) { deleting = true }
         }
         .confirmDeleting(source, isPresented: $deleting)
+        .renaming(source, isPresented: $renaming)
     }
 }

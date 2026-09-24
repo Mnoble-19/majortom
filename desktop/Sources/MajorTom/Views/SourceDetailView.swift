@@ -7,6 +7,7 @@ struct SourceDetailView: View {
     let source: Source
     @State private var reviewing = false
     @State private var deleting = false
+    @State private var renaming = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -21,12 +22,13 @@ struct SourceDetailView: View {
                 header(live)
             }
         }
-            .navigationTitle(source.title)
+            .navigationTitle(live.title)
             .sheet(isPresented: $reviewing) {
                 ReviewView(source: live) { reviewing = false }
                     .frame(minWidth: 760, minHeight: 640)
             }
             .confirmDeleting(live, isPresented: $deleting) { dismiss() }
+            .renaming(live, isPresented: $renaming)
     }
 
     private func header(_ source: Source) -> some View {
@@ -56,10 +58,15 @@ struct SourceDetailView: View {
                         .buttonStyle(ProminentButtonStyle(fill: source.kind.tint.ink, ink: source.kind.tint.fill))
                 }
                 TranslateButton(scope: .source(source))
-                Button { deleting = true } label: {
-                    Label("Delete \(source.kind.noun)", systemImage: "trash")
-                        .font(.rounded(13, .semibold))
+                HStack(spacing: 14) {
+                    Button { renaming = true } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
+                    Button { deleting = true } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
                 }
+                .font(.rounded(13, .semibold))
                 .buttonStyle(.plain)
                 .opacity(0.8)
             }

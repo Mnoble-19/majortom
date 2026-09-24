@@ -269,7 +269,33 @@ private struct ConfirmSourceDeletion: ViewModifier {
     }
 }
 
+/// Asks for a new name for a source.
+private struct RenameSource: ViewModifier {
+    @EnvironmentObject private var store: Store
+    let source: Source
+    @Binding var isPresented: Bool
+    @State private var name = ""
+
+    func body(content: Content) -> some View {
+        content
+            .alert("Rename this \(source.kind.noun)", isPresented: $isPresented) {
+                TextField("Name", text: $name)
+                Button("Rename") { store.renameSource(source, to: name) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Leave it empty to go back to the original name.")
+            }
+            .onChange(of: isPresented) { _, shown in
+                if shown { name = source.title }
+            }
+    }
+}
+
 extension View {
+    func renaming(_ source: Source, isPresented: Binding<Bool>) -> some View {
+        modifier(RenameSource(source: source, isPresented: isPresented))
+    }
+
     func confirmDeleting(_ source: Source, isPresented: Binding<Bool>, then: @escaping () -> Void = {}) -> some View {
         modifier(ConfirmSourceDeletion(source: source, isPresented: isPresented, then: then))
     }

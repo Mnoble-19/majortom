@@ -15,7 +15,7 @@ final class Store: ObservableObject {
 
     /// Columns every item query selects, in the order `item(_:)` reads them.
     private static let itemColumns = """
-        i.id, i.source_id, s.kind, s.title, s.url, i.kind, i.text, i.translation,
+        i.id, i.source_id, s.kind, COALESCE(NULLIF(s.display_title, ''), s.title), s.url, i.kind, i.text, i.translation,
         i.context, i.context_translation, i.position, i.starred, i.status, i.created_at,
         i.alternatives
         """
@@ -157,6 +157,12 @@ final class Store: ObservableObject {
             """, [meaning, sentence, alternatives.joined(separator: "\n"), item.id])
     }
 
+    /// Only the name shown here; an empty name goes back to the original.
+    func renameSource(_ source: Source, to title: String) {
+        write("UPDATE source SET display_title = ? WHERE id = ?",
+              [title.trimmingCharacters(in: .whitespacesAndNewlines), source.id])
+    }
+
     /// A whole episode, conversation or book: every word saved from it.
     func removeSource(_ source: Source) {
         write("UPDATE item SET removed_at = ? WHERE source_id = ? AND removed_at IS NULL",
@@ -249,7 +255,7 @@ final class Store: ObservableObject {
         guard let db else { return }
         do {
             sources = try db.query("""
-                SELECT s.id, s.kind, s.title, s.site, s.url, s.created_at,
+                SELECT s.id, s.kind, COALESCE(NULLIF(s.display_title, ''), s.title), s.site, s.url, s.created_at,
                        SUM(i.kind = 'word'), SUM(i.kind = 'phrase'),
                        MAX(i.created_at), SUM(i.status = 'learned')
                 FROM source s
