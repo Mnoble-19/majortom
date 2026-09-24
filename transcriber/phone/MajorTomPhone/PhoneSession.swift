@@ -40,6 +40,9 @@ final class PhoneSession {
     /// The German model is a download on first use, and on a phone that is
     /// worth saying out loud rather than looking frozen.
     func prepareModel() async {
+        // Before the guard: it is a hardware fact, so it should be on screen
+        // even when the model is already installed and there is nothing to do.
+        engine = Transcriber.availableEngine
         guard modelState != .ready else { return }
         modelState = .downloading
         do {
@@ -67,7 +70,6 @@ final class PhoneSession {
 
         do {
             let transcriber = Transcriber(locale: Locale(identifier: localeIdentifier), speaker: .them)
-            engine = transcriber.engine
             try await transcriber.start()
             let mic = MicSource()
             try mic.start { buffer, time in transcriber.append(buffer, at: time) }

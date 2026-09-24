@@ -95,6 +95,12 @@ public final class Transcriber: @unchecked Sendable {
 
     public let engine: Engine
 
+    /// Which recognizer this device would use, answerable before starting
+    /// anything — it is a property of the hardware, not of a session.
+    public static var availableEngine: Engine {
+        SpeechTranscriber.isAvailable ? .speechTranscriber : .dictationTranscriber
+    }
+
     /// Both conform to `SpeechModule` and both produce a `Result` with the same
     /// shape, so only construction and the results loop differ.
     private enum Recognizer {
@@ -127,8 +133,8 @@ public final class Transcriber: @unchecked Sendable {
     public init(locale: Locale, speaker: Speaker) {
         self.speaker = speaker
 
-        if SpeechTranscriber.isAvailable {
-            engine = .speechTranscriber
+        engine = Transcriber.availableEngine
+        if engine == .speechTranscriber {
             recognizer = .modern(SpeechTranscriber(
                 locale: locale,
                 transcriptionOptions: [],
@@ -142,7 +148,6 @@ public final class Transcriber: @unchecked Sendable {
             ))
         } else {
             // `frequentFinalization` is this recognizer's equivalent knob.
-            engine = .dictationTranscriber
             recognizer = .dictation(DictationTranscriber(
                 locale: locale,
                 contentHints: [],

@@ -56,7 +56,7 @@ struct TalkView: View {
                     get: { session.person }, set: { session.person = $0 }))
                     .textInputAutocapitalization(.words)
 
-                Picker("German", selection: Binding(
+                Picker("Spoken in", selection: Binding(
                     get: { session.localeIdentifier }, set: { session.localeIdentifier = $0 })) {
                     Text("Germany").tag("de-DE")
                     Text("Austria").tag("de-AT")
