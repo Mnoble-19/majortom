@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ShowDetailView: View {
+struct SourceDetailView: View {
     @EnvironmentObject private var store: Store
     let source: Source
 
@@ -52,7 +52,8 @@ struct ShowDetailView: View {
             }
 
             if !source.site.isEmpty {
-                Text(Platform.displayName(for: source.site)).pill(Theme.secondary)
+                Text(source.kind == .book ? source.site : Platform.displayName(for: source.site))
+                    .pill(Theme.secondary)
             }
 
             HStack(spacing: 16) {
@@ -98,7 +99,7 @@ struct ShowDetailView: View {
                 title: search.isEmpty && filter == nil
                     ? "No \(kind == .word ? "words" : "phrases") saved"
                     : "No matches",
-                message: search.isEmpty && filter == nil && kind == .phrase
+                message: search.isEmpty && filter == nil && kind == .phrase && source.kind == .show
                     ? "Phrase capture is not wired up in the extension yet."
                     : ""
             )
@@ -144,8 +145,8 @@ struct ShowDetailView: View {
                         .padding(.vertical, 9)
                 }
 
-                TableColumn("At", value: \.position) { item in
-                    Text(timecode(item.position))
+                TableColumn(positionLabel, value: \.position) { item in
+                    Text(position(item.position))
                         .font(Theme.mono(14))
                         .foregroundStyle(Theme.faint)
                         .opacity(dim(item))
@@ -165,9 +166,16 @@ struct ShowDetailView: View {
         item.status == .learned ? 0.4 : 1
     }
 
-    private func timecode(_ seconds: Double) -> String {
-        guard seconds > 0 else { return "—" }
-        let total = Int(seconds)
+    private var positionLabel: String {
+        source.kind == .book ? "Page" : "At"
+    }
+
+    /// `position` is seconds into a video or call, but a page in a book, and
+    /// rendering page 16 as "0:16" would be quietly wrong.
+    private func position(_ value: Double) -> String {
+        guard value > 0 else { return "—" }
+        if source.kind == .book { return String(Int(value)) }
+        let total = Int(value)
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 }

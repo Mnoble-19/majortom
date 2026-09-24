@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Platforms → that platform's shows → one show's words.
+/// Shows go platforms → that platform's shows → one show's words. Books skip
+/// the middle step and open straight from the shelf.
 enum Route: Hashable {
     case platform(kind: SourceKind, site: String)
-    case show(Source)
+    case source(Source)
 }
 
 struct RootView: View {
@@ -21,10 +22,10 @@ struct RootView: View {
                         switch route {
                         case let .platform(kind, site):
                             PlatformDetailView(kind: kind, site: site) {
-                                path.append(.show($0))
+                                path.append(.source($0))
                             }
-                        case let .show(source):
-                            ShowDetailView(source: source)
+                        case let .source(source):
+                            SourceDetailView(source: source)
                         }
                     }
             }
@@ -96,7 +97,7 @@ struct RootView: View {
                 PlatformsView(
                     kind: .show,
                     onOpenPlatform: { path.append(.platform(kind: .show, site: $0.id)) },
-                    onOpenShow: { path.append(.show($0)) }
+                    onOpenShow: { path.append(.source($0)) }
                 )
             case .call:
                 EmptyState(
