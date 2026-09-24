@@ -65,18 +65,43 @@ function MajorTom:init()
                 local word = dict_popup.lookupword
                 -- The definition is already on screen and offline, so there is
                 -- nothing to ask and nothing to fetch: save it straight away.
-                self:save("word", word, self:firstLine(dict_popup.definition), self:context())
+                self:save("word", word, self:gloss(dict_popup.definition), self:context())
             end,
         })
     end
 end
 
--- Dictionary definitions are long and often HTML. We only want a gloss; the
--- full entry stays in the dictionary where it is searchable.
-function MajorTom:firstLine(definition)
+local GLOSS_LIMIT = 3
+
+local function unescape(text)
+    return text:gsub("&amp;", "&"):gsub("&lt;", "<"):gsub("&gt;", ">")
+               :gsub("&quot;", '"'):gsub("&#39;", "'")
+end
+
+-- A Ding entry wraps its English meaning in `<div lang="en">…</div>`; the rest
+-- is part of speech and German cross-references, which are noise in a table
+-- column. KOReader concatenates every entry for a headword, so taking the
+-- first few of those divs gives "persevering; patient; insistent" rather than
+-- a screenful of markup. The full entry stays in the dictionary.
+function MajorTom:gloss(definition)
     if type(definition) ~= "string" then return "" end
-    local text = definition:gsub("<[^>]->", " "):gsub("%s+", " ")
-    return util.trim(text):sub(1, 300)
+
+    local meanings, seen = {}, {}
+    for meaning in definition:gmatch('<div lang="en">(.-)</div>') do
+        local clean = util.trim(unescape(meaning:gsub("<[^>]->", ""):gsub("%s+", " ")))
+        if clean ~= "" and not seen[clean] then
+            seen[clean] = true
+            meanings[#meanings + 1] = clean
+            if #meanings == GLOSS_LIMIT then break end
+        end
+    end
+    if #meanings > 0 then
+        return table.concat(meanings, "; ")
+    end
+
+    -- Another dictionary, or a format change: keep something rather than
+    -- saving the word with no translation at all.
+    return util.trim(definition:gsub("<[^>]->", " "):gsub("%s+", " ")):sub(1, 120)
 end
 
 function MajorTom:bookInfo()
