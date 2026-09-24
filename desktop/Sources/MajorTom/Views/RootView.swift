@@ -1,16 +1,37 @@
 import MajorTomStyle
 import SwiftUI
 
-enum SidebarItem: Hashable {
-    case home, review, words
-    case kind(SourceKind)
+/// Flat, with no associated values, so each row's tag is a plain value the
+/// sidebar's selection can match.
+enum SidebarItem: Hashable, CaseIterable {
+    case home, review, shows, calls, books, mine
+
+    static let library: [SidebarItem] = [.shows, .calls, .books, .mine]
+
+    init(_ kind: SourceKind) {
+        switch kind {
+        case .show: self = .shows
+        case .call: self = .calls
+        case .book: self = .books
+        case .own: self = .mine
+        }
+    }
+
+    var kind: SourceKind? {
+        switch self {
+        case .shows: return .show
+        case .calls: return .call
+        case .books: return .book
+        case .mine: return .own
+        case .home, .review: return nil
+        }
+    }
 
     var label: String {
         switch self {
         case .home: return "Home"
         case .review: return "Review"
-        case .words: return "All words"
-        case .kind(let kind): return kind.label
+        default: return kind!.label
         }
     }
 
@@ -18,8 +39,7 @@ enum SidebarItem: Hashable {
         switch self {
         case .home: return "house.fill"
         case .review: return "rectangle.stack.fill"
-        case .words: return "text.book.closed.fill"
-        case .kind(let kind): return kind.icon
+        default: return kind!.icon
         }
     }
 }
@@ -56,22 +76,29 @@ struct RootView: View {
 
     private var sidebar: some View {
         List(selection: $section) {
-            row(.home)
-            row(.review).badge(store.stats.due)
+            row(.home, badge: 0)
+            row(.review, badge: store.stats.due)
             Section("Library") {
-                ForEach(SourceKind.allCases, id: \.self) { kind in
-                    row(.kind(kind)).badge(store.sources(of: kind).count)
+                ForEach(SidebarItem.library, id: \.self) { item in
+                    row(item, badge: count(item))
                 }
-                row(.words)
             }
         }
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
     }
 
-    private func row(_ section: SidebarItem) -> some View {
-        Label(section.label, systemImage: section.icon)
+    /// The tag goes last: a List only reads it off the row's outermost view.
+    private func row(_ item: SidebarItem, badge: Int) -> some View {
+        Label(item.label, systemImage: item.icon)
             .font(.rounded(14, .medium))
-            .tag(section)
+            .badge(badge)
+            .tag(item)
+    }
+
+    private func count(_ item: SidebarItem) -> Int {
+        guard let kind = item.kind else { return 0 }
+        if kind == .own { return store.sources(of: .own).first?.itemCount ?? 0 }
+        return store.sources(of: kind).count
     }
 
     @ViewBuilder
@@ -85,14 +112,14 @@ struct RootView: View {
                 HomeView(open: open) { path.append(.source($0)) }
             case .review:
                 ReviewView(source: nil) { section = .home }
-            case .words:
-                AllWordsView()
-            case .kind(.show):
+            case .shows:
                 ShowsView { path.append(.platform(site: $0.id)) } openShow: { path.append(.source($0)) }
-            case .kind(.call):
+            case .calls:
                 CallsView { path.append(.source($0)) }
-            case .kind(.book):
+            case .books:
                 BooksView { path.append(.source($0)) }
+            case .mine:
+                MyWordsView()
             }
         }
     }
