@@ -22,9 +22,8 @@ Then, with the tablet plugged in over USB:
 ./install.sh
 ```
 
-That copies the plugin onto the tablet, checks it parses there, and loads a
-launch agent that imports whenever the tablet is connected. Restart KOReader
-afterwards to pick the plugin up.
+That copies the plugin onto the tablet and checks it parses there. Restart
+KOReader afterwards to pick the plugin up.
 
 First time on a new Mac, set up a key so nothing prompts for a password:
 
@@ -51,12 +50,24 @@ because losing the word is worse than losing the translation.
 ## Sync
 
 The tablet appends one JSON object per line to `/home/root/.majortom/vocab.jsonl`
-and never rewrites it. Saves land in the Books tab within two minutes of
-plugging in.
+and never rewrites it.
+
+Nothing imports on its own. Plug the tablet in over USB and press **Sync** in
+the desktop app's Books tab, which reports what it did — imported, nothing new,
+or tablet not connected.
+
+An earlier version polled on a timer from a launch agent. It worked, but it
+meant a background job running all day to catch the few minutes a week the
+tablet is plugged in, and the result only ever landed in a log file nobody
+reads. A button you press when you plug in is the honest shape of this.
+
+The same script is the command-line path, and the app drives it rather than
+reimplementing the import in Swift:
 
 ```bash
 ./sync.py              # import now
 ./sync.py --dry-run    # show what is on the tablet, write nothing
+./sync.py --json       # one JSON object; what the app parses
 ```
 
 There is no watermark and no sync state. Every run replays the whole log, and
@@ -89,7 +100,7 @@ majortom.koplugin/
   _meta.lua            name and description KOReader shows in the plugin list
   main.lua             the two buttons, the translate-then-confirm flow, the log
 sync.py                pull the log, import it, idempotently
-install.sh             both halves, plus the launch agent
+install.sh             push the plugin to a plugged-in tablet
 ```
 
 ## Known gaps
@@ -99,8 +110,12 @@ install.sh             both halves, plus the launch agent
 - **`context_translation` is never filled.** The schema has it; the tablet has
   no cheap way to produce it, and translating context separately would double
   the network calls for something rarely read.
-- **Word lookup saves a truncated gloss**, the first 300 characters of the Ding
-  entry with markup stripped. The full entry stays in the dictionary.
+- **Word lookup saves the first three meanings**, pulled from the Ding entry's
+  English blocks. Good enough for a table column; the full entry, with every
+  sense and the German cross-references, stays in the dictionary. A word whose
+  fourth sense is the one you met will look wrong.
+- **A save made with no connection keeps an empty translation.** Nothing fills
+  it in later — by choice, since the fix is to have wifi on while reading.
 - **Translation quality is Google's**, not DeepL's, which is noticeably flatter
   on long literary sentences. DeepL would need an API key on the tablet; doing
   it at import time on the Mac instead would be the better fix.

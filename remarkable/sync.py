@@ -123,40 +123,25 @@ def import_entries(conn: sqlite3.Connection, entries: list[dict]) -> tuple[int, 
     return written, len(sources_seen)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true",
-                        help="print what is on the tablet without writing")
-    args = parser.parse_args()
-
+def run(dry_run: bool) -> dict:
+    """Do the work and describe what happened. The caller decides how to say it."""
     try:
         entries = fetch()
     except Unplugged:
-        # The agent runs on a timer and the tablet is usually absent, so this
-        # must stay silent or the log fills with it.
-        if args.dry_run:
-            log("tablet not plugged in")
-        return 0
+        return {"status": "unplugged"}
     except ConnectionError as err:
-        log(str(err), error=True)
-        return 1
+        return {"status": "error", "message": str(err)}
 
     if not entries:
-        log("connected; nothing saved on the tablet yet")
-        return 0
+        return {"status": "empty"}
 
-    if args.dry_run:
-        for entry in entries:
-            print(f"  [{entry.get('kind'):6}] {entry.get('text')}"
-                  f"  →  {entry.get('translation') or '(untranslated)'}"
-                  f"   [{entry.get('book')} p{entry.get('page')}]")
-        print(f"\n{len(entries)} entries, not written (--dry-run)")
-        return 0
+    if dry_run:
+        return {"status": "dry-run", "entries": entries}
 
     path = db_path()
     if not path.exists():
-        log(f"no library at {path} — run the desktop app once first", error=True)
-        return 1
+        return {"status": "error",
+                "message": f"no library at {path} — run the desktop app once first"}
 
     conn = sqlite3.connect(path, timeout=5.0)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -165,7 +150,48 @@ def main() -> int:
     finally:
         conn.close()
 
-    log(f"imported {written} entries across {books} book(s)")
+    return {"status": "imported", "imported": written, "books": books}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dry-run", action="store_true",
+                        help="print what is on the tablet without writing")
+    parser.add_argument("--json", action="store_true",
+                        help="print one JSON object instead of prose (for the app)")
+    args = parser.parse_args()
+
+    result = run(args.dry_run)
+
+    if args.json:
+        # The app parses this, so it must be the only thing on stdout.
+        entries = result.pop("entries", None)
+        if entries is not None:
+            result["entries"] = len(entries)
+        print(json.dumps(result))
+        return 0 if result["status"] != "error" else 1
+
+    # if/elif rather than match: the app runs this with /usr/bin/python3, which
+    # is 3.9 on macOS, and match arrived in 3.10.
+    status = result["status"]
+    if status == "unplugged":
+        # Quiet by default: an absent tablet is the normal state, not a fault.
+        if args.dry_run:
+            log("tablet not plugged in")
+    elif status == "error":
+        log(result["message"], error=True)
+        return 1
+    elif status == "empty":
+        log("connected; nothing saved on the tablet yet")
+    elif status == "dry-run":
+        for entry in result["entries"]:
+            print(f"  [{entry.get('kind'):6}] {entry.get('text')}"
+                  f"  →  {entry.get('translation') or '(untranslated)'}"
+                  f"   [{entry.get('book')} p{entry.get('page')}]")
+        print(f"\n{len(result['entries'])} entries, not written (--dry-run)")
+    elif status == "imported":
+        log(f"imported {result['imported']} entries across {result['books']} book(s)")
+
     return 0
 
 
