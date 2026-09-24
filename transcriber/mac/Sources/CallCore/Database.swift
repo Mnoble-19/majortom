@@ -126,6 +126,10 @@ public final class Database: @unchecked Sendable {
         if !columnExists("item", "removed_at") {
             try exec("ALTER TABLE item ADD COLUMN removed_at TEXT;")
         }
+        // German alternatives from the model, one per line.
+        if !columnExists("item", "alternatives") {
+            try exec("ALTER TABLE item ADD COLUMN alternatives TEXT NOT NULL DEFAULT '';")
+        }
     }
 
     private func columnExists(_ table: String, _ column: String) -> Bool {
@@ -230,10 +234,12 @@ public final class Database: @unchecked Sendable {
         ) { ($0.int(0), $0.string(1), $0.string(2)) }
     }
 
-    public func setTranslation(itemID: Int64, translation: String, contextTranslation: String) throws {
+    public func setTranslation(
+        itemID: Int64, translation: String, contextTranslation: String, alternatives: [String] = []
+    ) throws {
         try run(
-            "UPDATE item SET translation = ?, context_translation = ? WHERE id = ?;",
-            [translation, contextTranslation, itemID]
+            "UPDATE item SET translation = ?, context_translation = ?, alternatives = ? WHERE id = ?;",
+            [translation, contextTranslation, alternatives.joined(separator: "\n"), itemID]
         )
     }
 
