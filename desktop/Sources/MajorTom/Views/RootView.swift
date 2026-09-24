@@ -106,11 +106,7 @@ struct RootView: View {
                     message: "Keywords from practice calls will collect here once transcription is wired up."
                 )
             case .book:
-                EmptyState(
-                    icon: SourceKind.book.icon,
-                    title: "No books yet",
-                    message: "Words saved while reading will collect here."
-                )
+                BooksView(onOpenBook: { path.append(.source($0)) })
             }
         }
     }

@@ -150,6 +150,102 @@ struct ShowCard: View {
     }
 }
 
+/// A book on the shelf. There are no cover images to show — the tablet only
+/// ever sends a title — so the cover is drawn from the title itself rather
+/// than leaving a placeholder that reads as a failed image.
+struct BookCard: View {
+    let source: Source
+    let onOpen: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 10) {
+                cover
+
+                Text(source.title)
+                    .font(Theme.ui(14, .medium))
+                    .foregroundStyle(Theme.text)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !source.site.isEmpty {
+                    Text(source.site)
+                        .font(Theme.ui(12))
+                        .foregroundStyle(Theme.faint)
+                        .lineLimit(1)
+                }
+
+                counts
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.14), value: hovering)
+    }
+
+    private var cover: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [source.coverTint.opacity(0.55), source.coverTint.opacity(0.16)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            // The spine, so a tile reads as a book edge-on rather than a card.
+            Rectangle()
+                .fill(Color.black.opacity(0.28))
+                .frame(width: 10)
+                .overlay(alignment: .trailing) {
+                    Rectangle().fill(Color.white.opacity(0.10)).frame(width: 1)
+                }
+
+            Text(source.title)
+                .font(Theme.serif(16, .semibold))
+                .foregroundStyle(Theme.text.opacity(0.92))
+                .lineLimit(5)
+                .multilineTextAlignment(.leading)
+                .lineSpacing(2)
+                .padding(.leading, 22)
+                .padding(.trailing, 14)
+                .padding(.vertical, 16)
+        }
+        .aspectRatio(0.68, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .stroke(hovering ? Theme.accent.opacity(0.45) : Theme.border, lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(hovering ? 0.45 : 0.3), radius: hovering ? 12 : 6, y: 4)
+        .offset(y: hovering ? -3 : 0)
+    }
+
+    private var counts: some View {
+        HStack(spacing: 8) {
+            if source.learnedCount > 0 {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.success)
+                Text("\(source.learnedCount)/\(source.wordCount + source.phraseCount)")
+                    .font(Theme.ui(13, .semibold))
+                    .foregroundStyle(Theme.muted)
+            } else {
+                Text("\(source.wordCount + source.phraseCount)")
+                    .font(Theme.ui(13, .semibold))
+                    .foregroundStyle(Theme.muted)
+                Text("saved")
+                    .font(Theme.ui(12))
+                    .foregroundStyle(Theme.faint)
+            }
+        }
+    }
+}
+
 /// A recently watched episode, on the landing screen — any platform.
 struct RecentShowRow: View {
     let source: Source
@@ -220,5 +316,16 @@ struct StarButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+extension Source {
+    /// A stable colour per book, so a shelf reads as distinct spines rather
+    /// than one tile repeated. Deterministic on purpose — Swift seeds
+    /// `hashValue` per process, which would reshuffle the shelf every launch.
+    var coverTint: Color {
+        var hash: UInt64 = 5381
+        for byte in title.utf8 { hash = (hash &* 33) &+ UInt64(byte) }
+        return Color(hue: Double(hash % 360) / 360, saturation: 0.45, brightness: 0.62)
     }
 }
