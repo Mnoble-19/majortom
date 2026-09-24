@@ -74,7 +74,7 @@ final class SyncModel {
                     return
                 }
                 sent += result.accepted
-                pending.clearSynced(payload.sessionID)
+                pending.removeSession(payload.sessionID)
             } catch {
                 state = .failed("\(error)")
                 return
