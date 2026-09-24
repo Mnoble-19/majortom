@@ -113,7 +113,9 @@ Both UNIQUE constraints are the dedup keys — use `ON CONFLICT ... DO UPDATE` t
 make writes idempotent, which is how the extension can safely resend its whole
 vocabulary on every save. Never let a blank translation overwrite a filled one:
 use `COALESCE(NULLIF(excluded.translation, ''), item.translation)`, since the app
-fills in translations after the fact.
+fills in translations after the fact. Likewise keep an existing `context`
+(`COALESCE(NULLIF(item.context, ''), excluded.context)`): it can be trimmed in
+the app, and a resend must not put the full sentence back.
 
 **`starred`, `status`, `removed_at` and the `review_` columns belong to the
 app.** Seed them on insert if you like,
