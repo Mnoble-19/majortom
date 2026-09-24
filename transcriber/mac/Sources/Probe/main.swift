@@ -108,20 +108,9 @@ if arguments.first == "--serve" {
     let database = try Database()
     print("writing to \(Database.defaultURL().path)")
 
-    var llm = LLMSettings.empty
-    llm.endpoint = ProcessInfo.processInfo.environment["MT_ENDPOINT"] ?? llm.endpoint
-    llm.model = ((try? await ModelTranslator(settings: llm, apiKey: "").models().first) ?? nil) ?? ""
-    print(llm.model.isEmpty
-        ? "no model reachable at \(llm.endpoint) — words will import untranslated"
-        : "translating with \(llm.model)")
-    let settings = llm
-
-    let server = SyncServer(
-        database: database,
-        translator: { Translator(settings: settings, apiKey: "") }
-    ) { report in
+    // Words land untranslated; the library app translates them.
+    let server = SyncServer(database: database) { report in
         print("  ← \(report.person): \(report.words) word(s), source \(report.sourceID)")
-        print("    translating in the background…")
     }
     try server.start()
     try await Task.sleep(for: .milliseconds(300))
