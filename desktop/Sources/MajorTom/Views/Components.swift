@@ -214,6 +214,26 @@ struct TranslateButton: View {
     }
 }
 
+/// Back to the previous page. The toolbar has one too, but it is small and
+/// easy to miss next to a large page title.
+struct BackButton: View {
+    @Environment(\.dismiss) private var dismiss
+    var label = "Back"
+
+    var body: some View {
+        Button { dismiss() } label: {
+            Label(label, systemImage: "chevron.left")
+                .font(.rounded(14, .semibold))
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(Palette.card, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Palette.text)
+        .keyboardShortcut("[", modifiers: .command)
+    }
+}
+
 /// Button look for the one main action on a screen.
 struct ProminentButtonStyle: ButtonStyle {
     var fill: Color = Palette.accent

@@ -61,6 +61,7 @@ struct PlatformView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                BackButton(label: "Shows")
                 PageTitle(title: name,
                           subtitle: "\(shows.count) \(shows.count == 1 ? "show" : "shows") · \(shows.reduce(0) { $0 + $1.itemCount }) saved")
                 SourceGrid(sources: shows, open: openShow)

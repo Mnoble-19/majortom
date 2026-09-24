@@ -13,7 +13,12 @@ struct SourceDetailView: View {
         // the live copy so they move as words are learned or deleted.
         let live = store.sources.first { $0.id == source.id } ?? source
 
-        WordBrowser(items: items) { header(live) }
+        WordBrowser(items: items) {
+            VStack(alignment: .leading, spacing: 16) {
+                BackButton()
+                header(live)
+            }
+        }
             .navigationTitle(source.title)
             .sheet(isPresented: $reviewing) {
                 ReviewView(source: live) { reviewing = false }
