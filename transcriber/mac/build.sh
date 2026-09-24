@@ -11,13 +11,17 @@ cd "$(dirname "$0")"
 
 CONFIG="${1:-release}"
 
+ICON=build/AppIcon.icns
+[[ "$ICON" -nt ../../desktop/make-icon.swift ]] || swift ../../desktop/make-icon.swift "$ICON" --calls
+
 swift build -c "$CONFIG"
 BIN="$(swift build -c "$CONFIG" --show-bin-path)/MajorTomCalls"
 
 APP="build/MajorTom Calls.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/MajorTomCalls"
+cp "$ICON" "$APP/Contents/Resources/AppIcon.icns"
 cp Info.plist "$APP/Contents/Info.plist"
 
 # Ad-hoc signing is enough for TCC to recognise the app across launches, so the

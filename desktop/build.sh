@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 CONFIG="${1:-release}"
 REPO="$(cd .. && pwd)"
 
-[[ -f Resources/AppIcon.icns ]] || swift make-icon.swift Resources/AppIcon.icns
+[[ Resources/AppIcon.icns -nt make-icon.swift ]] || swift make-icon.swift Resources/AppIcon.icns
 
 swift build -c "$CONFIG"
 BIN="$(swift build -c "$CONFIG" --show-bin-path)/MajorTom"
