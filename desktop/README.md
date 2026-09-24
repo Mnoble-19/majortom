@@ -61,7 +61,7 @@ saved. A third, `review`, is the app's own log of review answers.
 ```sql
 CREATE TABLE source (
     id         INTEGER PRIMARY KEY,
-    kind       TEXT NOT NULL,           -- 'show' | 'call' | 'book'
+    kind       TEXT NOT NULL,           -- 'show' | 'call' | 'book' | 'own' (typed in)
     title      TEXT NOT NULL,           -- shown as the card/heading label
     site       TEXT NOT NULL DEFAULT '',-- hostname, or the other party for a call
     url        TEXT NOT NULL DEFAULT '',-- deep link back, '' if none

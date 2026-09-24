@@ -131,6 +131,32 @@ final class Store: ObservableObject {
         write("UPDATE item SET removed_at = ? WHERE id = ?", [ISO8601.string(), item.id])
     }
 
+    /// Adds a word you typed in. Saving one you deleted earlier brings it back.
+    func addOwnWord(_ text: String, translation: String, context: String) {
+        guard let db else { return }
+        let now = ISO8601.string()
+        do {
+            try db.exec("BEGIN IMMEDIATE;")
+            try db.run("""
+                INSERT INTO source (kind, title, site, url, created_at)
+                VALUES ('own', 'My words', '', 'own', ?)
+                ON CONFLICT(kind, url, title) DO NOTHING
+                """, [now])
+            try db.run("""
+                INSERT INTO item (source_id, kind, text, translation, context, created_at)
+                SELECT id, ?, ?, ?, ?, ? FROM source WHERE kind = 'own' AND url = 'own'
+                ON CONFLICT(source_id, kind, text) DO UPDATE SET
+                    translation = COALESCE(NULLIF(excluded.translation, ''), item.translation),
+                    context = COALESCE(NULLIF(excluded.context, ''), item.context),
+                    removed_at = NULL
+                """, [text.contains(" ") ? "phrase" : "word", text, translation, context, now])
+            try db.exec("COMMIT;")
+        } catch {
+            try? db.exec("ROLLBACK;")
+        }
+        reload()
+    }
+
     /// Three right answers in a row, spaced out, and a word counts as learned.
     /// A wrong answer starts it over and makes it due again straight away.
     func recordReview(_ item: Item, correct: Bool) {

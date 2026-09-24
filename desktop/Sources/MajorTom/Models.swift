@@ -1,9 +1,13 @@
 import Foundation
 
 /// Where saved material came from. Shows, calls and books share one shape, so
-/// every capture tool writes into the same tables.
+/// every capture tool writes into the same tables. `own` holds the words you
+/// typed in yourself, on the Mac or the phone.
 enum SourceKind: String, Codable, CaseIterable {
-    case show, call, book
+    case show, call, book, own
+
+    /// Kinds that are captured from somewhere, as opposed to typed in.
+    static let captured: [SourceKind] = [.show, .call, .book]
 }
 
 enum ItemKind: String, Codable, CaseIterable {

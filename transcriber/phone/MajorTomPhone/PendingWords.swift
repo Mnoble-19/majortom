@@ -34,6 +34,27 @@ final class PendingWords {
         save()
     }
 
+    /// Words typed in by hand wait in one session of their own, and land in
+    /// "My words" on the Mac rather than under a conversation.
+    static let ownSessionID = "own"
+
+    var ownWords: [SyncPayload.Word] {
+        sessions.first { $0.id == Self.ownSessionID }?.words ?? []
+    }
+
+    func addOwn(_ text: String, translation: String, sentence: String) {
+        let word = SyncPayload.Word(text: text, sentence: sentence, position: 0,
+                                    translation: translation.isEmpty ? nil : translation)
+        if let index = sessions.firstIndex(where: { $0.id == Self.ownSessionID }) {
+            sessions[index].words.removeAll { $0.text.caseInsensitiveCompare(text) == .orderedSame }
+            sessions[index].words.append(word)
+        } else {
+            sessions.append(StoredSession(id: Self.ownSessionID, person: "My words", startedAt: Date(),
+                                          words: [word], kind: SyncPayload.ownWords))
+        }
+        save()
+    }
+
     func remove(_ text: String, from sessionID: String) {
         guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         sessions[index].words.removeAll { $0.text == text }
@@ -59,7 +80,7 @@ final class PendingWords {
     func payloads() -> [SyncPayload] {
         sessions.map {
             SyncPayload(sessionID: $0.id, person: $0.person,
-                        startedAt: $0.startedAt, words: $0.words)
+                        startedAt: $0.startedAt, words: $0.words, kind: $0.kind)
         }
     }
 
@@ -81,4 +102,5 @@ struct StoredSession: Codable, Identifiable, Sendable {
     var person: String
     var startedAt: Date
     var words: [SyncPayload.Word]
+    var kind: String? = nil
 }

@@ -9,24 +9,34 @@ public struct SyncPayload: Codable, Sendable {
     public var person: String
     public var startedAt: Date
     public var words: [Word]
+    /// `"own"` for words typed in by hand rather than heard in a conversation.
+    /// Optional so a phone on an older build still syncs.
+    public var kind: String?
+
+    public var isOwnWords: Bool { kind == SyncPayload.ownWords }
+    public static let ownWords = "own"
 
     public struct Word: Codable, Sendable {
         public var text: String
         public var sentence: String
         public var position: TimeInterval
+        /// Only typed-in words can carry one; heard words are translated later.
+        public var translation: String?
 
-        public init(text: String, sentence: String, position: TimeInterval) {
+        public init(text: String, sentence: String, position: TimeInterval, translation: String? = nil) {
             self.text = text
             self.sentence = sentence
             self.position = position
+            self.translation = translation
         }
     }
 
-    public init(sessionID: String, person: String, startedAt: Date, words: [Word]) {
+    public init(sessionID: String, person: String, startedAt: Date, words: [Word], kind: String? = nil) {
         self.sessionID = sessionID
         self.person = person
         self.startedAt = startedAt
         self.words = words
+        self.kind = kind
     }
 }
 
@@ -83,19 +93,20 @@ public struct SyncImporter: Sendable {
     }
 
     public func importSession(_ payload: SyncPayload) throws -> Int64 {
-        let title = Session.title(person: payload.person, at: payload.startedAt)
-        let sourceID = try database.upsertSource(
-            title: title,
-            person: payload.person,
-            sessionID: payload.sessionID,
-            origin: "phone",
-            createdAt: payload.startedAt)
+        let sourceID = payload.isOwnWords
+            ? try database.ownWordsSource()
+            : try database.upsertSource(
+                title: Session.title(person: payload.person, at: payload.startedAt),
+                person: payload.person,
+                sessionID: payload.sessionID,
+                origin: "phone",
+                createdAt: payload.startedAt)
 
         for word in payload.words {
             try database.upsertItem(
                 sourceID: sourceID,
                 text: word.text,
-                translation: "",
+                translation: word.translation ?? "",
                 context: word.sentence,
                 position: word.position,
                 createdAt: payload.startedAt)

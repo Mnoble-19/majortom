@@ -135,6 +135,24 @@ public final class Database: @unchecked Sendable {
 
     // MARK: - Writing
 
+    /// The one source holding words typed in by hand, on the Mac or the phone.
+    /// Same row the library app creates, so both land in one "My words" list.
+    public func ownWordsSource() throws -> Int64 {
+        let ids = try query(
+            """
+            INSERT INTO source (kind, title, site, url, created_at)
+            VALUES ('own', 'My words', '', 'own', ?)
+            ON CONFLICT(kind, url, title) DO UPDATE SET kind = kind
+            RETURNING id;
+            """,
+            [ISO8601.string()]
+        ) { $0.int(0) }
+        guard let id = ids.first else {
+            throw DatabaseError.query("own-words source upsert returned no id")
+        }
+        return id
+    }
+
     /// One call or one in-person session. `url` carries a stable UUID so that
     /// syncing the same session twice updates it instead of duplicating it.
     @discardableResult

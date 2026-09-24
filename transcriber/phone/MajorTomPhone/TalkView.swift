@@ -30,7 +30,10 @@ private struct SetupView: View {
     /// is one tap away.
     private var recentPeople: [String] {
         var seen = Set<String>()
-        return pending.sessions.reversed().map(\.person).filter { seen.insert($0).inserted }
+        return pending.sessions.reversed()
+            .filter { $0.id != PendingWords.ownSessionID }
+            .map(\.person)
+            .filter { seen.insert($0).inserted }
     }
 
     var body: some View {

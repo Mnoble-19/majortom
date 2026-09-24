@@ -57,19 +57,75 @@ struct SourceDetailView: View {
         case .show: return "\(Platform.displayName(for: source.site)) · \(source.lastSavedAt.relativeDay)"
         case .call: return "With \(source.site) · \(source.createdAt.relativeDay)"
         case .book: return source.site.isEmpty ? "Book" : source.site
+        case .own: return "Typed in by you"
         }
     }
 }
 
-struct AllWordsView: View {
+/// Words you typed in yourself, and the place to type more.
+struct MyWordsView: View {
     @EnvironmentObject private var store: Store
+    @EnvironmentObject private var phone: PhoneSync
+
+    @State private var text = ""
+    @State private var meaning = ""
+    @State private var sentence = ""
+    @FocusState private var focused: Field?
+
+    private enum Field { case text, meaning, sentence }
 
     var body: some View {
-        let items = store.allItems()
+        let items = store.sources(of: .own).first.map(store.items(in:)) ?? []
 
-        WordBrowser(items: items, showsSource: true) {
-            PageTitle(title: "All words", subtitle: "\(items.count) saved, newest first")
+        WordBrowser(items: items) {
+            VStack(alignment: .leading, spacing: 20) {
+                PageTitle(title: "My words",
+                          subtitle: "Words you want to learn that you did not meet in a show, call or book.")
+                form
+            }
         }
-        .navigationTitle("All words")
+        .navigationTitle("My words")
+        .onAppear { focused = .text }
+    }
+
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            TextField("Word or phrase", text: $text)
+                .font(.rounded(26, .heavy))
+                .focused($focused, equals: .text)
+                .onSubmit { focused = .meaning }
+            TextField("Meaning — leave empty and MajorTom fills it in", text: $meaning)
+                .font(.rounded(17))
+                .focused($focused, equals: .meaning)
+                .onSubmit { focused = .sentence }
+            TextField("A sentence with it, if you have one", text: $sentence)
+                .font(.rounded(17))
+                .focused($focused, equals: .sentence)
+                .onSubmit(add)
+            HStack {
+                Text("Return moves to the next field, and adds from the last.")
+                    .font(.rounded(12))
+                    .foregroundStyle(Palette.tertiary)
+                Spacer()
+                Button("Add word", action: add)
+                    .buttonStyle(ProminentButtonStyle())
+                    .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .textFieldStyle(.plain)
+        .card(padding: 24, radius: 26)
+    }
+
+    private func add() {
+        let word = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !word.isEmpty else { return }
+        let gloss = meaning.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.addOwnWord(word, translation: gloss,
+                         context: sentence.trimmingCharacters(in: .whitespacesAndNewlines))
+        if gloss.isEmpty { phone.translateWaiting() }
+        text = ""
+        meaning = ""
+        sentence = ""
+        focused = .text
     }
 }

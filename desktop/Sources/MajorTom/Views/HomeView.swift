@@ -29,7 +29,7 @@ struct HomeView: View {
                 .frame(height: 250)
 
                 LazyVGrid(columns: columns, spacing: 20) {
-                    ForEach(SourceKind.allCases, id: \.self) { kind in
+                    ForEach(SourceKind.captured, id: \.self) { kind in
                         kindTile(kind)
                     }
                 }
@@ -139,8 +139,9 @@ struct HomeView: View {
         case .show: sources.count == 1 ? "show" : "shows"
         case .call: sources.count == 1 ? "call" : "calls"
         case .book: sources.count == 1 ? "book" : "books"
+        case .own: "list"
         }
-        return Tile(tint: kind.tint, height: 150, action: { open(.kind(kind)) }) {
+        return Tile(tint: kind.tint, height: 150, action: { open(SidebarItem(kind)) }) {
             Image(systemName: kind.icon)
                 .font(.system(size: 20, weight: .semibold))
                 .frame(width: 44, height: 44)

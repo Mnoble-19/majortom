@@ -23,6 +23,9 @@ struct ContentView: View {
             Tab("Talk", systemImage: "waveform") {
                 NavigationStack { TalkView(session: session, pending: pending) }
             }
+            Tab("My words", systemImage: "pencil.line") {
+                NavigationStack { MyWordsView(pending: pending) }
+            }
             Tab("Waiting", systemImage: "tray.full") {
                 NavigationStack { PendingView(pending: pending, sync: sync) }
             }

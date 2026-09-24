@@ -7,6 +7,7 @@ extension SourceKind {
         case .show: return "Shows"
         case .call: return "Calls"
         case .book: return "Books"
+        case .own: return "My words"
         }
     }
 
@@ -15,6 +16,7 @@ extension SourceKind {
         case .show: return "play.rectangle.fill"
         case .call: return "bubble.left.and.bubble.right.fill"
         case .book: return "book.closed.fill"
+        case .own: return "pencil.line"
         }
     }
 
@@ -23,6 +25,7 @@ extension SourceKind {
         case .show: return Palette.shows
         case .call: return Palette.calls
         case .book: return Palette.books
+        case .own: return Palette.Tint(fill: Palette.accentSoft, ink: Palette.accentText)
         }
     }
 }
