@@ -40,6 +40,14 @@ final class SessionModel {
 
     var person = Settings.lastPerson
     var localeIdentifier = Settings.locale(forPerson: Settings.lastPerson)
+    /// Everyone already in the library, for one-click picking.
+    private(set) var knownPeople: [String] = (try? Database().people()) ?? []
+
+    /// Picks someone you have talked to before, with the region you used.
+    func choose(_ name: String) {
+        person = name
+        localeIdentifier = Settings.locale(forPerson: name)
+    }
 
     private var session: Session?
     /// Set across the awaits in `start()`, so a second Return or menu click
@@ -64,6 +72,8 @@ final class SessionModel {
         do {
             let database = try Database()
             self.database = database
+            let name = database.canonicalPerson(name)
+            person = name
             let session = Session(
                 person: name,
                 locale: Locale(identifier: localeIdentifier),
@@ -104,6 +114,7 @@ final class SessionModel {
         if !saved.isEmpty {
             finished = Finished(person: person)
         }
+        knownPeople = (try? database?.people()) ?? knownPeople
         pump?.cancel()
         pump = nil
         await session?.end()

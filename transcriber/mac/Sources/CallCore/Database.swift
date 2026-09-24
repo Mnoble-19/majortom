@@ -157,6 +157,29 @@ public final class Database: @unchecked Sendable {
         return id
     }
 
+    /// Everyone you have talked to, most recent first.
+    public func people() throws -> [String] {
+        try query(
+            "SELECT site, MAX(created_at) FROM source WHERE kind = 'call' AND site != '' GROUP BY site ORDER BY 2 DESC;"
+        ) { $0.string(0) }
+            .reduce(into: [String]()) { names, name in
+                if !names.contains(where: { Self.samePerson($0, name) }) { names.append(name) }
+            }
+    }
+
+    /// The spelling already on file for this person, so "lena " next week
+    /// joins last week's calls with "Lena" instead of starting a new person.
+    public func canonicalPerson(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (try? people())?.first { Self.samePerson($0, trimmed) } ?? trimmed
+    }
+
+    private static func samePerson(_ a: String, _ b: String) -> Bool {
+        a.trimmingCharacters(in: .whitespacesAndNewlines)
+            .compare(b.trimmingCharacters(in: .whitespacesAndNewlines),
+                     options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+    }
+
     /// One call or one in-person session. `url` carries a stable UUID so that
     /// syncing the same session twice updates it instead of duplicating it.
     @discardableResult

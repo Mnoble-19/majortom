@@ -93,11 +93,12 @@ public struct SyncImporter: Sendable {
     }
 
     public func importSession(_ payload: SyncPayload) throws -> Int64 {
+        let person = database.canonicalPerson(payload.person)
         let sourceID = payload.isOwnWords
             ? try database.ownWordsSource()
             : try database.upsertSource(
-                title: Session.title(person: payload.person, at: payload.startedAt),
-                person: payload.person,
+                title: Session.title(person: person, at: payload.startedAt),
+                person: person,
                 sessionID: payload.sessionID,
                 origin: "phone",
                 createdAt: payload.startedAt)

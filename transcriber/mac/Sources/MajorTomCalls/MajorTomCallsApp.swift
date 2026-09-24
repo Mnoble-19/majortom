@@ -140,6 +140,14 @@ private struct SetupView: View {
     let model: SessionModel
     @FocusState private var nameFocused: Bool
 
+    /// People from earlier calls, other than the one already typed.
+    private var others: [String] {
+        let typed = model.person.trimmingCharacters(in: .whitespaces)
+        return Array(model.knownPeople
+            .filter { $0.caseInsensitiveCompare(typed) != .orderedSame }
+            .prefix(4))
+    }
+
     var body: some View {
         VStack(spacing: 22) {
             Avatar(name: model.person.isEmpty ? "?" : model.person, size: 72)
@@ -161,6 +169,19 @@ private struct SetupView: View {
                 .frame(width: 300)
                 .background(Palette.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .focused($nameFocused)
+
+            if !others.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(others, id: \.self) { name in
+                        Button(name) { model.choose(name) }
+                            .buttonStyle(.plain)
+                            .font(.rounded(14, .semibold))
+                            .padding(.horizontal, 14)
+                            .frame(height: 30)
+                            .background(Palette.card, in: Capsule())
+                    }
+                }
+            }
 
             Picker("Spoken in", selection: Binding(
                 get: { model.localeIdentifier }, set: { model.localeIdentifier = $0 })) {
