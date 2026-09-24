@@ -32,9 +32,10 @@ final class SessionModel {
     /// The call that just ended, shown until the next one starts.
     private(set) var finished: Finished?
 
+    /// The words stay in `saved` until the next call, so they can still be
+    /// edited on the summary.
     struct Finished {
         let person: String
-        let words: [SavedWord]
     }
 
     var person = Settings.lastPerson
@@ -45,6 +46,8 @@ final class SessionModel {
     /// while the first is still starting does not open a second session.
     private var starting = false
     private var database: Database?
+    /// Kept after the call ends, so the summary can still edit what was saved.
+    private var sourceID: Int64?
     private var pump: Task<Void, Never>?
 
     func start() async {
@@ -67,6 +70,7 @@ final class SessionModel {
                 database: database)
             try await session.start(their: .whicheverAppIsPlaying)
             self.session = session
+            sourceID = session.databaseSourceID
 
             Settings.lastPerson = name
             Settings.setLocale(localeIdentifier, forPerson: name)
@@ -98,7 +102,7 @@ final class SessionModel {
 
     func end() async {
         if !saved.isEmpty {
-            finished = Finished(person: person, words: saved)
+            finished = Finished(person: person)
         }
         pump?.cancel()
         pump = nil
@@ -162,14 +166,31 @@ final class SessionModel {
         text.trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines))
     }
 
-    /// Rewrites a word after you correct what the recognizer heard.
-    func recorrect(_ id: SavedWord.ID, to newWord: String) {
-        guard let index = saved.firstIndex(where: { $0.id == id }), let session else { return }
-        let word = newWord.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !word.isEmpty, word != saved[index].word else { return }
+    func remove(_ id: SavedWord.ID) {
+        guard let index = saved.firstIndex(where: { $0.id == id }), let database, let sourceID else { return }
+        try? database.deleteItem(sourceID: sourceID, text: saved[index].word)
+        saved.remove(at: index)
+    }
 
-        let line = Line(text: saved[index].sentence, start: saved[index].position)
-        try? session.correct(saved[index].word, to: word, from: line)
+    /// Rewrites a saved word or its sentence: a word the recognizer misheard,
+    /// or a sentence with more of the conversation in it than you want kept.
+    /// Works during the call and on the summary after it.
+    func update(_ id: SavedWord.ID, word newWord: String, sentence newSentence: String) {
+        guard let index = saved.firstIndex(where: { $0.id == id }),
+              let database, let sourceID else { return }
+        let word = newWord.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sentence = newSentence.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !word.isEmpty else { return }
+        let old = saved[index]
+
+        if word != old.word {
+            try? database.deleteItem(sourceID: sourceID, text: old.word)
+            try? database.upsertItem(sourceID: sourceID, text: word, translation: "",
+                                     context: sentence, position: old.position)
+        } else if sentence != old.sentence {
+            try? database.setContext(sourceID: sourceID, text: word, context: sentence)
+        }
         saved[index].word = word
+        saved[index].sentence = sentence
     }
 }

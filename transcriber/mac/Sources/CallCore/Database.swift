@@ -211,6 +211,12 @@ public final class Database: @unchecked Sendable {
         )
     }
 
+    /// Replaces the sentence saved with a word, for when you want to trim
+    /// what was kept of the conversation.
+    public func setContext(sourceID: Int64, text: String, context: String) throws {
+        try run("UPDATE item SET context = ? WHERE source_id = ? AND text = ?;", [context, sourceID, text])
+    }
+
     public func deleteItem(sourceID: Int64, text: String) throws {
         try run("DELETE FROM item WHERE source_id = ? AND text = ?;", [sourceID, text])
     }

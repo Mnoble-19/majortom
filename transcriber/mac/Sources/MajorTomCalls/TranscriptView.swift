@@ -120,7 +120,8 @@ private struct WordButton: View {
 /// corrected on the spot.
 struct SavedWordsView: View {
     let words: [SavedWord]
-    let onCorrect: (SavedWord.ID, String) -> Void
+    let onEdit: (SavedWord.ID, String, String) -> Void
+    let onDelete: (SavedWord.ID) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -144,13 +145,13 @@ struct SavedWordsView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(words.reversed()) { word in
-                            SavedWordRow(word: word, onCorrect: onCorrect)
+                            SavedWordRow(word: word, onEdit: onEdit, onDelete: onDelete)
                         }
                     }
                 }
             }
 
-            Text("Misheard? Click a word to fix it. Translations are filled in by MajorTom afterwards.")
+            Text("Click a word or its sentence to fix or trim it. Translations are filled in by MajorTom afterwards.")
                 .font(.rounded(11))
                 .foregroundStyle(Palette.tertiary)
         }
@@ -160,27 +161,51 @@ struct SavedWordsView: View {
     }
 }
 
-private struct SavedWordRow: View {
+/// A saved word and the sentence kept with it, both editable in place: fix a
+/// misheard word, or cut the sentence down to what you are happy keeping.
+struct SavedWordRow: View {
     let word: SavedWord
-    let onCorrect: (SavedWord.ID, String) -> Void
-    @State private var editing: String?
+    let onEdit: (SavedWord.ID, String, String) -> Void
+    let onDelete: (SavedWord.ID) -> Void
+
+    @State private var text = ""
+    @State private var sentence = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TextField("", text: Binding(get: { editing ?? word.word }, set: { editing = $0 }))
-                .textFieldStyle(.plain)
-                .font(.rounded(16, .heavy))
-                .onSubmit {
-                    if let editing { onCorrect(word.id, editing) }
-                    editing = nil
+            HStack(alignment: .top) {
+                TextField("Word", text: $text)
+                    .font(.rounded(16, .heavy))
+                Button { onDelete(word.id) } label: {
+                    Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
                 }
-            Text(word.sentence)
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.tertiary)
+                .help("Delete this word")
+            }
+            TextField("Sentence", text: $sentence, axis: .vertical)
                 .font(.rounded(12))
                 .foregroundStyle(Palette.secondary)
-                .lineLimit(2)
+                .lineLimit(1...8)
+        }
+        .textFieldStyle(.plain)
+        .focused($focused)
+        .onSubmit(commit)
+        .onChange(of: focused) { _, isFocused in
+            if !isFocused { commit() }
+        }
+        .onAppear {
+            text = word.word
+            sentence = word.sentence
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func commit() {
+        guard text != word.word || sentence != word.sentence else { return }
+        onEdit(word.id, text, sentence)
     }
 }

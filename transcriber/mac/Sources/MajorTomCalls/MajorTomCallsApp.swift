@@ -48,11 +48,12 @@ struct CallView: View {
             if model.isRunning {
                 HStack(spacing: 0) {
                     TranscriptView(model: model)
-                    SavedWordsView(words: model.saved, onCorrect: model.recorrect)
+                    SavedWordsView(words: model.saved, onEdit: model.update, onDelete: model.remove)
                         .frame(width: 260)
                 }
             } else if let finished = model.finished {
-                SummaryView(finished: finished, onNewCall: model.startOver)
+                SummaryView(person: finished.person, words: model.saved,
+                            onEdit: model.update, onDelete: model.remove, onNewCall: model.startOver)
             } else {
                 SetupView(model: model)
             }
@@ -198,31 +199,25 @@ private struct SetupView: View {
 /// After a call: what was saved, and the way on to translating it. Calls save
 /// words without a meaning; the library app fills those in.
 private struct SummaryView: View {
-    let finished: SessionModel.Finished
+    let person: String
+    let words: [SavedWord]
+    let onEdit: (SavedWord.ID, String, String) -> Void
+    let onDelete: (SavedWord.ID) -> Void
     let onNewCall: () -> Void
 
     var body: some View {
         VStack(spacing: 22) {
             VStack(spacing: 6) {
-                Text("Call with \(finished.person)").font(.rounded(24, .heavy))
-                Text("\(finished.words.count) \(finished.words.count == 1 ? "word" : "words") saved. Translate them in MajorTom, under Calls.")
+                Text("Call with \(person)").font(.rounded(24, .heavy))
+                Text("\(words.count) \(words.count == 1 ? "word" : "words") saved. Fix or trim them here, then translate them in MajorTom, under Calls.")
                     .font(.rounded(14))
                     .foregroundStyle(Palette.secondary)
             }
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(finished.words) { word in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(word.word).font(.rounded(17, .heavy))
-                            Text(word.sentence)
-                                .font(.rounded(13))
-                                .foregroundStyle(Palette.secondary)
-                                .lineLimit(2)
-                        }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    ForEach(words) { word in
+                        SavedWordRow(word: word, onEdit: onEdit, onDelete: onDelete)
                     }
                 }
             }
