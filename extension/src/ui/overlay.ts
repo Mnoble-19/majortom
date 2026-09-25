@@ -1,11 +1,17 @@
-import {Settings} from '../shared/types';
+import {Gloss, Settings} from '../shared/types';
 
 export interface OverlayHooks {
     isSaved(word: string): boolean;
 
-    lookup(word: string): Promise<string>;
+    /** Saved phrases, so their words can be marked where they reappear. */
+    savedPhrases(): string[];
+
+    lookup(word: string): Promise<Gloss | { error: string }>;
 
     saveWord(word: string, translation: string): Promise<void>;
+
+    /** Fill in the meaning of something saved before its lookup came back. */
+    setMeaning(word: string, translation: string): Promise<void>;
 
     removeWord(word: string): Promise<void>;
 
@@ -79,7 +85,7 @@ const STYLE = `
 .w { cursor: pointer; border-radius: .25em; padding: 0 .04em; transition: background .1s, color .1s; }
 .w:hover { background: rgba(255,255,255,.2); }
 .w.saved { background: var(--highlight); color: var(--on-highlight); text-shadow: none; }
-.w.active { background: #fff; color: #1c1c1e; text-shadow: none; }
+.w.active, .w.selecting { background: #fff; color: #1c1c1e; text-shadow: none; }
 
 .status {
   pointer-events: none; font-size: 12px; font-weight: 600; color: #e6e7eb;
@@ -98,6 +104,10 @@ const STYLE = `
 .card.open { display: block; }
 .card .top { display: flex; align-items: flex-start; gap: 10px; }
 .card .hw { flex: 1; font-size: 24px; font-weight: 800; line-height: 1.15; word-break: break-word; }
+.card .form { color: var(--card-dim); font-size: 13px; font-weight: 600; margin-top: 2px; }
+.card .form:empty { display: none; }
+.card .hint { color: var(--card-dim); font-size: 12px; margin: -6px 0 12px; }
+.card .hint:empty { display: none; }
 .card .tr { color: var(--accent-text); font-size: 16px; font-weight: 600; min-height: 1.3em; margin: 4px 0 14px; line-height: 1.4; }
 .card .tr.dim { color: var(--card-dim); font-weight: 500; font-style: italic; }
 .card button { all: unset; cursor: pointer; text-align: center; font-weight: 700; }
@@ -138,6 +148,7 @@ export class Overlay {
     private statusEl: HTMLElement;
     private card: HTMLElement;
     private cardWord!: HTMLElement;
+    private cardForm!: HTMLElement;
     private cardTr!: HTMLElement;
     private cardSave!: HTMLButtonElement;
     private bar: HTMLElement;
@@ -150,7 +161,14 @@ export class Overlay {
 
     private lastPrimary = '';
     private lastSecondary = '';
-    private activeWord: HTMLElement | null = null;
+    /** The clicked word, or every word of a selected phrase. */
+    private activeWords: HTMLElement[] = [];
+    private cardHint!: HTMLElement;
+    /** Hover targets currently under the pointer: the lines and the card. */
+    private hovering = 0;
+    /** True while the video is paused because you are reading, not by you. */
+    private pausedByHover = false;
+    private hoverLeaveTimer = 0;
     private resizeObs: ResizeObserver | null = null;
     private parent: HTMLElement | null = null;
     /** Player controls appear on hover, so lift out of their way while they do. */
@@ -182,6 +200,13 @@ export class Overlay {
         this.root.append(this.card, this.bar, this.statusEl, this.primaryEl, this.secondaryEl);
         this.shadow.appendChild(this.root);
 
+        for (const target of [this.primaryEl, this.secondaryEl, this.card]) {
+            target.addEventListener('mouseenter', this.onReadStart);
+            target.addEventListener('mouseleave', this.onReadEnd);
+        }
+        // Pressing play yourself while hovering wins; we stop holding it.
+        video.addEventListener('play', this.onPlay);
+
         this.applySettings(settings);
     }
 
@@ -200,6 +225,8 @@ export class Overlay {
         this.parent?.removeEventListener('mouseleave', this.onLeave);
         this.resizeObs?.disconnect();
         this.resizeObs = null;
+        this.video.removeEventListener('play', this.onPlay);
+        clearTimeout(this.hoverLeaveTimer);
         this.host.remove();
     }
 
@@ -232,10 +259,16 @@ export class Overlay {
 
     /** Repaint saved-state highlighting without rebuilding the line. */
     refreshSaved(): void {
-        this.primaryEl.querySelectorAll('.w').forEach(node => {
-            const span = node as HTMLElement;
-            span.classList.toggle('saved', this.hooks.isSaved(norm(span.textContent || '')));
-        });
+        const spans = Array.from(this.primaryEl.querySelectorAll<HTMLElement>('.w'));
+        const words = spans.map(s => norm(s.textContent || ''));
+        const marked = words.map(w => this.hooks.isSaved(w));
+        for (const phrase of this.hooks.savedPhrases()) {
+            const parts = phrase.split(' ');
+            for (let i = 0; i + parts.length <= words.length; i++) {
+                if (parts.every((p, k) => words[i + k] === p)) parts.forEach((_, k) => marked[i + k] = true);
+            }
+        }
+        spans.forEach((s, i) => s.classList.toggle('saved', marked[i]));
     }
 
     applySettings(s: Settings): void {
@@ -258,34 +291,126 @@ export class Overlay {
         this.scale();
     };
 
+    /* ── Pause while reading ────────────────────────────────────────────────── */
+
+    private onReadStart = () => {
+        this.hovering++;
+        clearTimeout(this.hoverLeaveTimer);
+        if (!this.settings.hoverPause || this.video.paused) return;
+        this.pausedByHover = true;
+        this.video.pause();
+    };
+
+    private onReadEnd = () => {
+        this.hovering = Math.max(0, this.hovering - 1);
+        // A beat of grace, so crossing the gap between the two lines, or from
+        // a line up to the card, does not resume and pause again.
+        clearTimeout(this.hoverLeaveTimer);
+        this.hoverLeaveTimer = self.setTimeout(() => this.maybeResume(), 250);
+    };
+
+    private onPlay = () => {
+        if (this.resuming) return;
+        this.pausedByHover = false;
+    };
+
+    private resuming = false;
+
+    /** Resume only what hovering paused, and not while a card is still open. */
+    private maybeResume(): void {
+        if (this.hovering > 0 || this.card.classList.contains('open') || !this.pausedByHover) return;
+        this.pausedByHover = false;
+        this.resuming = true;
+        void this.video.play().catch(() => {
+        }).finally(() => {
+            this.resuming = false;
+        });
+    }
+
     /* ── Content ────────────────────────────────────────────────────────────── */
 
     private onFullscreen = () => this.attachToBestParent();
 
     private onDocClick = (e: Event) => {
         if (!this.card.classList.contains('open')) return;
-        if (!e.composedPath().includes(this.card)) this.closeCard();
+        // Clicks on the line are the words' own business: this runs first, and
+        // closing here would drop the start of a shift-clicked phrase.
+        const path = e.composedPath();
+        if (!path.includes(this.card) && !path.includes(this.primaryEl)) this.closeCard();
+    };
+
+    /* ── Selecting words ────────────────────────────────────────────────────── */
+
+    /** The word a drag started on, while the button is down. */
+    private dragFrom: HTMLElement | null = null;
+    private dragTo: HTMLElement | null = null;
+
+    private wordsBetween(a: HTMLElement, b: HTMLElement): HTMLElement[] {
+        const words = Array.from(this.primaryEl.querySelectorAll<HTMLElement>('.w'));
+        const i = words.indexOf(a), j = words.indexOf(b);
+        if (i < 0 || j < 0) return [b];
+        return words.slice(Math.min(i, j), Math.max(i, j) + 1);
+    }
+
+    private onWordDown = (e: MouseEvent, span: HTMLElement) => {
+        if (e.button !== 0) return;
+        // Keeps the browser from starting a text selection, and the player
+        // from treating it as a click on the video.
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.shiftKey && this.activeWords.length) {
+            void this.openCard(this.wordsBetween(this.activeWords[0], span));
+            return;
+        }
+        this.dragFrom = this.dragTo = span;
+        this.previewDrag();
+        document.addEventListener('mouseup', this.onDragEnd, true);
+    };
+
+    private onWordOver = (span: HTMLElement) => {
+        if (!this.dragFrom || span === this.dragTo) return;
+        this.dragTo = span;
+        this.previewDrag();
+    };
+
+    private previewDrag(): void {
+        this.primaryEl.querySelectorAll('.w.selecting').forEach(n => n.classList.remove('selecting'));
+        if (!this.dragFrom || !this.dragTo) return;
+        this.wordsBetween(this.dragFrom, this.dragTo).forEach(n => n.classList.add('selecting'));
+    }
+
+    /** One word if you just clicked, the run between if you dragged. */
+    private onDragEnd = (e: MouseEvent) => {
+        document.removeEventListener('mouseup', this.onDragEnd, true);
+        const from = this.dragFrom, to = this.dragTo;
+        this.dragFrom = this.dragTo = null;
+        this.previewDrag();
+        if (!from || !to) return;
+        e.stopPropagation();
+        void this.openCard(this.wordsBetween(from, to));
     };
 
     /**
-     * Anchor to whatever box the video actually occupies — the fullscreen element
-     * when there is one, otherwise the nearest positioned ancestor.
+     * Anchor to the box the video actually occupies: its nearest positioned
+     * ancestor. In fullscreen, that search stops at the fullscreen element,
+     * since nothing outside it is drawn.
+     *
+     * The fullscreen element itself is only the fallback. YouTube puts its
+     * whole page app in fullscreen, a box thousands of pixels tall, so
+     * anchoring there put the subtitles far below the screen; its player,
+     * which it stretches to fill the screen, is the right box.
      */
     private attachToBestParent(): void {
         const fs = (document.fullscreenElement || (document as any).webkitFullscreenElement) as HTMLElement | null;
-        let parent: HTMLElement | null = null;
+        const stop = fs && fs.contains(this.video) ? fs : document.body;
 
-        if (fs) {
-            parent = fs;
-        } else {
-            let n: HTMLElement | null = this.video.parentElement;
-            while (n && n !== document.body) {
-                const cs = getComputedStyle(n);
-                if (cs.position !== 'static' && n.clientHeight > 80) break;
-                n = n.parentElement;
-            }
-            parent = n || this.video.parentElement;
+        let n: HTMLElement | null = this.video.parentElement;
+        while (n && n !== stop && n !== document.body) {
+            const cs = getComputedStyle(n);
+            if (cs.position !== 'static' && n.clientHeight > 80) break;
+            n = n.parentElement;
         }
+        const parent = n && n !== document.body ? n : (fs && fs !== this.video ? fs : this.video.parentElement);
         if (!parent) return;
 
         if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
@@ -326,22 +451,25 @@ export class Overlay {
 
             const span = el('span', 'w');
             span.textContent = m[0];
-            if (this.hooks.isSaved(norm(m[0]))) span.classList.add('saved');
-            span.addEventListener('click', e => {
-                e.stopPropagation();
-                this.openCard(span, m[0]);
-            });
+            span.addEventListener('mousedown', e => this.onWordDown(e, span));
+            span.addEventListener('mouseenter', () => this.onWordOver(span));
+            // The card opens on mouseup; the click only has to stay away from
+            // the player, which would otherwise pause or play the video.
+            span.addEventListener('click', e => e.stopPropagation());
             frag.appendChild(span);
             last = i + m[0].length;
         }
         if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
         this.primaryEl.appendChild(frag);
+        this.refreshSaved();
     }
 
     private buildCard(): HTMLElement {
         const card = el('div', 'card');
         this.cardWord = el('div', 'hw');
+        this.cardForm = el('div', 'form');
         this.cardTr = el('div', 'tr');
+        this.cardHint = el('div', 'hint');
         this.cardSave = el('button', 'save') as HTMLButtonElement;
 
         const close = el('button', 'close') as HTMLButtonElement;
@@ -351,50 +479,69 @@ export class Overlay {
 
         const top = el('div', 'top');
         top.append(this.cardWord, close);
-        card.append(top, this.cardTr, this.cardSave);
+        card.append(top, this.cardForm, this.cardTr, this.cardHint, this.cardSave);
         return card;
     }
 
-    private async openCard(span: HTMLElement, raw: string): Promise<void> {
-        const word = norm(raw);
-        this.activeWord?.classList.remove('active');
-        this.activeWord = span;
-        span.classList.add('active');
+    private async openCard(spans: HTMLElement[]): Promise<void> {
+        const raw = spans.map(s => s.textContent || '').join(' ');
+        const phrase = spans.length > 1;
+        const text = phrase ? spans.map(s => norm(s.textContent || '')).join(' ') : norm(raw);
+        this.activeWords.forEach(s => s.classList.remove('active'));
+        this.activeWords = spans;
+        spans.forEach(s => s.classList.add('active'));
+        const current = spans;
 
         this.cardWord.textContent = raw;
+        this.cardForm.textContent = '';
+        this.cardHint.textContent = phrase ? '' : 'Drag across words to save a phrase';
         this.card.classList.add('open');
+        // What gets saved: the meaning once it has arrived, never the
+        // "Looking up…" placeholder.
+        let meaning = '';
 
-        const saved = this.hooks.isSaved(word);
-        this.setSaveButton(saved);
+        this.setSaveButton(this.hooks.isSaved(text), phrase);
         this.cardSave.onclick = async () => {
-            if (this.hooks.isSaved(word)) {
-                await this.hooks.removeWord(word);
-                this.setSaveButton(false);
+            if (this.hooks.isSaved(text)) {
+                await this.hooks.removeWord(text);
+                this.setSaveButton(false, phrase);
             } else {
-                await this.hooks.saveWord(word, this.cardTr.textContent || '');
-                this.setSaveButton(true);
+                await this.hooks.saveWord(text, meaning);
+                this.setSaveButton(true, phrase);
             }
             this.refreshSaved();
         };
 
         this.cardTr.textContent = 'Looking up…';
         this.cardTr.classList.add('dim');
-        const tr = await this.hooks.lookup(word);
+        const out = await this.hooks.lookup(text);
         // The user may have clicked elsewhere while the lookup was in flight.
-        if (this.activeWord !== span) return;
-        this.cardTr.textContent = tr || 'No translation (check your DeepL key in settings)';
-        this.cardTr.classList.toggle('dim', !tr);
+        if (this.activeWords !== current) return;
+        if ('error' in out) {
+            this.cardTr.textContent = `No translation: ${out.error}`;
+            return;
+        }
+        meaning = out.meaning;
+        // Saved while this was still out, or saved blank before: fill it in.
+        if (this.hooks.isSaved(text)) void this.hooks.setMeaning(text, meaning);
+        // `holt` → `rausholen`: only worth a line when it adds something.
+        if (out.form.toLowerCase() !== raw.toLowerCase()) this.cardForm.textContent = out.form;
+        this.cardTr.textContent = out.meaning;
+        this.cardTr.classList.remove('dim');
     }
 
-    private setSaveButton(saved: boolean): void {
-        this.cardSave.textContent = saved ? 'Saved — click to remove' : 'Save word';
+    private setSaveButton(saved: boolean, phrase: boolean): void {
+        this.cardSave.textContent = saved ? 'Saved — click to remove' : phrase ? 'Save phrase' : 'Save word';
         this.cardSave.classList.toggle('on', saved);
     }
 
     private closeCard(): void {
+        const wasOpen = this.card.classList.contains('open');
         this.card.classList.remove('open');
-        this.activeWord?.classList.remove('active');
-        this.activeWord = null;
+        this.activeWords.forEach(s => s.classList.remove('active'));
+        this.activeWords = [];
+        // Closed with the pointer already away from the subtitles: carry on.
+        if (wasOpen) this.maybeResume();
     }
 
     /* ── Toolbar ────────────────────────────────────────────────────────────── */

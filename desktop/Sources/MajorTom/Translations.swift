@@ -3,7 +3,7 @@ import Foundation
 
 /// Fills in meanings: every word still missing one, or a single word you want
 /// checked. Words arrive untranslated from the phone, from calls, from the
-/// reMarkable offline and from the browser when DeepL is down; all of them are
+/// reMarkable offline and from the browser when its model is down; all of them are
 /// translated here.
 @MainActor
 final class Translations: ObservableObject {

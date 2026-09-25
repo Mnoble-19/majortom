@@ -23,15 +23,48 @@ Then in Chrome (or Brave — same steps):
 Re-run `npm run build` after changing anything, then hit reload on the extension
 card. `npm run dev` rebuilds on save.
 
+## Turning it on
+
+The extension does nothing until you turn it on for a site: open the popup on
+that site and flip the switch in the header. The tab reloads once, and from then
+on that site (and its subdomains) gets the overlay. No other page is touched —
+the capture script patches `fetch` and `XMLHttpRequest`, so it is only ever
+registered for sites on your list.
+
 ## Translation
 
-YouTube translates its own subtitles server-side, so it works with no setup.
+Translation runs on a local model: any OpenAI-compatible server, by default
+llama-server at `http://localhost:9931/v1` (the same endpoint the desktop app
+uses). With no model named in the popup, the first one the server lists is used.
+**Subtitles → Local model → Test** checks it end to end.
 
-Everywhere else needs a [DeepL API key](https://www.deepl.com/pro-api) — the free
-tier covers 500,000 characters a month, which is roughly 15 feature-length films.
-Paste it into the extension popup under **Subtitles → DeepL** and press *Test*.
+In order of preference:
 
-Translations are cached per video, so rewatching costs nothing.
+1. **A human-made track in your language**, when the site has one (YouTube).
+2. **The local model.** As soon as the subtitles are found, all of them are
+   queued, a batch at a time, starting from where you are in the video, so the
+   line on screen fills in first. A seek moves the work to wherever you went.
+3. **YouTube's own machine translation**, shown the instant subtitles load and
+   replaced sentence by sentence as the model's lines arrive — or kept, if the
+   model can't be reached.
+
+Translations are cached per video, sentence by sentence, so rewatching, a
+reload, or a better subtitle source turning up reuses everything already done.
+
+Clicking a word asks the model for its dictionary form (`holt … raus` →
+`rausholen`) and what it means in that sentence.
+
+## YouTube
+
+YouTube returns an empty caption file unless the request carries a token only
+its player can make. The capture script therefore lets the player fetch
+captions once — switching them on for a moment if they are off, then back —
+keeps that token, and fetches the tracks it wants with it.
+
+It also picks the track in the language being spoken (an authored one over the
+automatic transcript), and when YouTube has auto-dubbed a video into another
+language, it switches the audio back to the original. A dub in the language set
+under **Video is in** is left alone.
 
 ## Keys
 
@@ -92,8 +125,8 @@ src/
     parsers.ts              VTT / TTML / SRT / json3 → Cue[]
     adapters/               one file per site; register in index.ts
   translate/
-    index.ts                sentence regrouping, caching, orchestration
-    deepl.ts                provider (a local-model provider goes beside it)
+    index.ts                sentence regrouping, caching, playhead-first batching
+    llm.ts                  the local model client (runs in the service worker)
   ui/
     overlay.ts              the on-video overlay (shadow DOM)
     popup.ts / popup.html
@@ -135,8 +168,9 @@ out entirely and never touch the network for logging.
   translations of foreign-language speech directly into the video picture (most
   Y-Kollektiv episodes do this). Those are pixels, not text — no extension can
   remove them, so you will occasionally see them under our line.
-- **Word lookup is translation, not a dictionary** — no lemmas, genders, or
-  declensions. `translateOne` in `translate.ts` is the seam where a real
-  dictionary would go.
-- Local translation models are not wired up. The provider interface in
-  `translate.ts` is the place for it.
+- **The model has to be running.** With it down, YouTube falls back to its own
+  machine translation; other sites show the original line only, and the overlay
+  says why.
+- **A long video takes a few minutes to translate in full** (about 4 seconds per
+  batch of sentences on Gemma 4 once loaded). Starting at the playhead hides
+  this unless you jump around a lot.

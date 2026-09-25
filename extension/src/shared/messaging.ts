@@ -1,4 +1,4 @@
-import {BgRequest, BgResponse} from './types';
+import {BgRequest, BgResponse, Gloss} from './types';
 import {log} from './logger';
 
 function send<T>(msg: BgRequest): Promise<BgResponse<T>> {
@@ -30,13 +30,26 @@ export async function bgFetch(url: string): Promise<string | null> {
     return res.data ?? null;
 }
 
-export async function bgTranslate(
-    texts: string[], source: string, target: string, key: string,
-): Promise<string[] | null> {
-    const res = await send<string[]>({type: 'TRANSLATE', texts, source, target, key});
-    if (!res.ok) {
-        log.warn('translate failed:', res.error);
-        return null;
-    }
-    return res.data ?? null;
+/** Resolves once the page scripts match the current site list. */
+export async function bgSyncScripts(): Promise<void> {
+    await send({type: 'SYNC_SCRIPTS'});
+}
+
+/** Resolves to the translations, or to the reason there are none. */
+export async function bgTranslateSubs(
+    lines: string[], context: string[], source: string, target: string,
+): Promise<{ lines: string[] } | { error: string }> {
+    const res = await send<string[]>({type: 'LLM_SUBS', lines, context, source, target});
+    if (res.ok && res.data) return {lines: res.data};
+    log.warn('translate failed:', res.error);
+    return {error: res.error || 'no answer'};
+}
+
+export async function bgGloss(
+    word: string, sentence: string, source: string, target: string,
+): Promise<Gloss | { error: string }> {
+    const res = await send<Gloss>({type: 'LLM_GLOSS', word, sentence, source, target});
+    if (res.ok && res.data) return res.data;
+    log.warn('gloss failed:', res.error);
+    return {error: res.error || 'no answer'};
 }

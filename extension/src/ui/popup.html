@@ -500,6 +500,10 @@
                 <label class="sw"><input id="blurSecondary" type="checkbox"><span></span></label>
             </div>
             <div class="row">
+                <label for="hoverPause">Pause while I hover the subtitles<span class="hint">Resumes when you move away</span></label>
+                <label class="sw"><input id="hoverPause" type="checkbox"><span></span></label>
+            </div>
+            <div class="row">
                 <label for="autoPause">Pause after each line</label>
                 <label class="sw"><input id="autoPause" type="checkbox"><span></span></label>
             </div>
@@ -527,19 +531,22 @@
         </div>
     </div>
     <div class="group">
-        <h2>DeepL</h2>
+        <h2>Local model</h2>
         <div class="card">
             <div class="note">
-                Needed everywhere except YouTube, which translates its own subtitles.
-                <a href="https://www.deepl.com/pro-api" rel="noopener" target="_blank">Get a free key</a>
-                — 500k characters a month.
+                Translates subtitles and clicked words. Any OpenAI-compatible server works;
+                llama-server is the default.
             </div>
             <div class="keyfield">
-                <input aria-label="DeepL API key" autocomplete="off" id="deeplKey" placeholder="DeepL API key"
-                       spellcheck="false" type="password">
-                <button class="act" id="testKey">Test</button>
+                <input aria-label="Model endpoint" autocomplete="off" id="llmEndpoint"
+                       placeholder="http://localhost:9931/v1" spellcheck="false" type="text">
             </div>
-            <div class="status" id="keyStatus"></div>
+            <div class="keyfield">
+                <input aria-label="Model name" autocomplete="off" id="llmModel"
+                       placeholder="Model: first one the server lists" spellcheck="false" type="text">
+                <button class="act" id="testModel">Test</button>
+            </div>
+            <div class="status" id="modelStatus"></div>
             <div class="keyfield">
                 <button class="act ghost" id="clearCache">Clear translation cache</button>
             </div>
@@ -571,6 +578,7 @@
         <h2>Tips</h2>
         <div class="card note" style="padding: 12px 14px; line-height: 1.65">
             Click any word in the top line to look it up and save it.<br>
+            Drag across several words to save a phrase.<br>
             Hover the subtitles to show the toolbar.<br>
             Keys are ignored while you’re typing in a text box.
         </div>

@@ -8,8 +8,8 @@
  * TTML/EBU-TT parsing needs a DOM and is only exercised in the browser.
  */
 import {cueIndexAt, detectFormat, parse} from '../src/capture/parsers';
-import {groupSentences} from '../src/translate';
-import {parseYtPayload, pickArdSubtitleUrl} from '../src/capture/adapters';
+import {groupSentences, nextBatch} from '../src/translate';
+import {parseYtPayload, pickArdSubtitleUrl, pickSpokenTrack} from '../src/capture/adapters';
 
 let failures = 0;
 
@@ -97,6 +97,26 @@ console.log('\nYouTube json3');
     eq('blank event dropped', cues.length, 2);
     eq('ms converted to seconds', cues[0].end, 3);
 }
+{
+    // Automatic captions roll: each line stays up into the next one.
+    const json = JSON.stringify({
+        events: [
+            {tStartMs: 11000, dDurationMs: 4799, segs: [{utf8: 'CL Air,'}]},
+            {tStartMs: 13320, dDurationMs: 4640, segs: [{utf8: 'willkommen zurück'}]},
+        ],
+    });
+    const cues = parse(json, 'https://youtube.com/api/timedtext?fmt=json3');
+    eq('rolling line clipped to the next', cues[0].end, 13.32);
+    eq('last line keeps its length', cues[1].end, 17.96);
+    eq('newer line shows once it starts', cueIndexAt(cues, 14, 0), 1);
+}
+{
+    // Authored tracks come padded with zero-width spaces.
+    const json = JSON.stringify({
+        events: [{tStartMs: 0, dDurationMs: 1000, segs: [{utf8: '\u200b\u200b\u200b \u200bEin Fenster.\u200b \u200b\u200b'}]}],
+    });
+    eq('zero-width spaces stripped', parse(json, 'timedtext')[0].text, 'Ein Fenster.');
+}
 
 /* ── Cue lookup ───────────────────────────────────────────────────────────── */
 
@@ -175,19 +195,58 @@ console.log('\nARD subtitle URL extraction');
 console.log('\nYouTube stale-payload guard');
 {
     const payload = (v: string) => JSON.stringify({
-        v, tracks: [{baseUrl: `https://x/${v}`, languageCode: 'de', kind: 'asr'}],
+        v, token: {pot: 'p'}, tracks: [{baseUrl: `https://x/${v}`, languageCode: 'de', kind: 'asr'}],
     });
 
-    eq('matching video id is accepted', parseYtPayload(payload('abc'), 'abc').length, 1);
+    eq('matching video id is accepted', parseYtPayload(payload('abc'), 'abc')?.tracks.length, 1);
     // The bug this guards: YouTube changes the URL before refreshing the payload,
     // so an unchecked read serves the previous video's subtitles.
-    eq('stale payload is rejected', parseYtPayload(payload('old'), 'new').length, 0);
-    eq('missing attribute', parseYtPayload(null, 'abc').length, 0);
-    eq('malformed json', parseYtPayload('{not json', 'abc').length, 0);
+    eq('stale payload is rejected', parseYtPayload(payload('old'), 'new'), null);
+    eq('missing attribute', parseYtPayload(null, 'abc'), null);
+    eq('malformed json', parseYtPayload('{not json', 'abc'), null);
     eq('unstamped payload still usable',
-        parseYtPayload(JSON.stringify({tracks: [{baseUrl: 'u', languageCode: 'de'}]}), 'abc').length, 1);
-    eq('no id in url falls through', parseYtPayload(payload('abc'), null).length, 1);
-    eq('tracks missing', parseYtPayload(JSON.stringify({v: 'abc'}), 'abc').length, 0);
+        parseYtPayload(JSON.stringify({tracks: [{baseUrl: 'u', languageCode: 'de'}]}), 'abc')?.tracks.length, 1);
+    eq('no id in url falls through', parseYtPayload(payload('abc'), null)?.tracks.length, 1);
+    eq('tracks missing', parseYtPayload(JSON.stringify({v: 'abc'}), 'abc')?.tracks.length, 0);
+    eq('token carried', parseYtPayload(payload('abc'), 'abc')?.token?.pot, 'p');
+    eq('no token yet', parseYtPayload(JSON.stringify({v: 'abc', tracks: []}), 'abc')?.token, null);
+}
+
+console.log('\nYouTube track choice');
+{
+    const t = (languageCode: string, kind?: string) => ({baseUrl: `u/${languageCode}/${kind}`, languageCode, kind});
+    const pick = (tracks: ReturnType<typeof t>[], audio = '', learning = 'de') =>
+        pickSpokenTrack({v: 'x', token: {}, audio, tracks}, learning)?.baseUrl;
+
+    // A German podcast: only the automatic transcript.
+    eq('lone transcript', pick([t('de', 'asr')]), 'u/de/asr');
+    // The old rule took the first authored track, whatever its language.
+    eq('spoken language beats first authored',
+        pick([t('ar'), t('en'), t('de'), t('en', 'asr')]), 'u/en/undefined');
+    eq('authored beats transcript in same language', pick([t('de', 'asr'), t('de')]), 'u/de/undefined');
+    eq('German dub kept → German track', pick([t('en'), t('de'), t('en', 'asr')], 'de'), 'u/de/undefined');
+    eq('single-track audio is ignored', pick([t('fr'), t('de', 'asr')], 'und'), 'u/de/asr');
+    eq('no transcript → learning language', pick([t('fr'), t('de')]), 'u/de/undefined');
+    eq('nothing matches → first', pick([t('fr'), t('it')]), 'u/fr/undefined');
+}
+
+/* ── Translation order ────────────────────────────────────────────────────── */
+
+console.log('\nPlayhead-first batching');
+{
+    const cues = Array.from({length: 10}, (_, i) => ({start: i * 10, end: i * 10 + 5, text: `s${i}.`}));
+    const {cueGroup} = groupSentences(cues);
+    const none = new Array(10).fill(false);
+
+    eq('starts at the line playing', nextBatch(none, cueGroup, cues, 42, 3).join(), '4,5,6');
+    eq('between lines → the next one', nextBatch(none, cueGroup, cues, 47, 2).join(), '5,6');
+    eq('stops at a finished sentence',
+        nextBatch(none.map((_, i) => i === 6), cueGroup, cues, 42, 5).join(), '4,5');
+    eq('wraps to the start when the rest is done',
+        nextBatch(none.map((_, i) => i >= 3), cueGroup, cues, 42, 5).join(), '0,1,2');
+    eq('all done → nothing', nextBatch(new Array(10).fill(true), cueGroup, cues, 0, 5).length, 0);
+    eq('capped by length', nextBatch(none, cueGroup, cues, 0, 10, new Array(10).fill(600), 1500).join(), '0,1');
+    eq('one long sentence still goes', nextBatch(none, cueGroup, cues, 0, 10, new Array(10).fill(5000), 1500).join(), '0');
 }
 
 /* ── Live ARD (opt-in) ────────────────────────────────────────────────────── */

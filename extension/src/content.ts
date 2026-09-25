@@ -1,4 +1,4 @@
-import {CueTrack, MediaInfo, PageMessage, Settings, VocabEntry} from './shared/types';
+import {CueTrack, Gloss, MediaInfo, PageMessage, Settings, VocabEntry} from './shared/types';
 import {NATIVE_CAPTION_SELECTORS} from './shared/config';
 import {Adapter, adapterFor, mediaInfo} from './capture/adapters';
 import {cueIndexAt, parse} from './capture/parsers';
@@ -12,6 +12,7 @@ import {
   onSettingsChanged,
   removeWordEverywhere,
   setSettings,
+  updateWord,
 } from './shared/storage';
 import {log} from './shared/logger';
 
@@ -27,8 +28,8 @@ let overlay: Overlay | null = null;
 let best: CueTrack | null = null;
 let secondary: SecondaryLines = [];
 let savedWords = new Set<string>();
-/** Word → translation, so re-clicking a recurring word costs nothing. */
-const lookupCache = new Map<string, string>();
+/** Word + sentence → gloss, so clicking the same word again costs nothing. */
+const lookupCache = new Map<string, Gloss>();
 
 let rafId = 0;
 let cueHint = 0;
@@ -58,12 +59,12 @@ async function boot() {
     listenToPage();
     installKeyboard();
 
+    // Turning the site off is handled by the popup, which reloads the tab once
+    // the scripts are unregistered. Nothing here reloads the page.
     onSettingsChanged(next => {
-        const wasEnabled = isHostEnabled(settings);
         settings = next;
         overlay?.applySettings(next);
         applyNativeCaptionCss();
-        if (wasEnabled !== isHostEnabled(next)) location.reload();
     });
 
     // A single loop drives discovery: it notices new videos and SPA navigations
@@ -80,6 +81,8 @@ function configurePage(active: boolean) {
         hideNative: settings?.hideNativeCaptions ?? true,
         // Body sniffing is only worth its cost while we have nothing better.
         hungry: !best,
+        // Which dub to keep and which caption track to prefer on YouTube.
+        learning: (settings?.sourceLang || 'de').toLowerCase(),
     }, '*');
 }
 
@@ -94,7 +97,9 @@ function pickVideo(): HTMLVideoElement | null {
 }
 
 function tick() {
-    const key = `${location.href}`;
+    // The media key, not the URL: YouTube rewrites its query string after a
+    // video loads, and that is not a new video.
+    const key = mediaInfo(adapter).key;
     if (key !== currentKey) {
         currentKey = key;
         onMediaChanged();
@@ -112,7 +117,11 @@ function tick() {
         }
         startSync();
         mountOverlay();
-        if (adapter && !best) overlay?.setStatus('MajorTom: looking for subtitles…', 4000);
+        if (adapter && !best) {
+            overlay?.setStatus('MajorTom: looking for subtitles…', 4000);
+            void resolveViaAdapter();
+        }
+        if (best) scheduleTranslation();
     }
 }
 
@@ -127,7 +136,9 @@ function onMediaChanged() {
     pausedForCue = -1;
     media = mediaInfo(adapter);
     void loadVocab();
-    void resolveViaAdapter();
+    // Only a frame with a video does any work. Embedded frames on the same
+    // site would otherwise each fetch and translate the same subtitles.
+    if (video) void resolveViaAdapter();
 }
 
 /* ── Cue acquisition ──────────────────────────────────────────────────────── */
@@ -139,7 +150,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
  * particular swaps the URL well before the new track list exists — so a single
  * attempt loses the race on SPA navigations.
  */
-const ADAPTER_RETRY_MS = [0, 500, 1200, 2500, 5000];
+const ADAPTER_RETRY_MS = [0, 500, 1200, 2500, 5000, 10000, 20000];
 
 async function resolveViaAdapter() {
     if (!adapter) return;
@@ -150,7 +161,7 @@ async function resolveViaAdapter() {
         if (token !== adapterToken) return; // navigated away mid-flight
 
         try {
-            const tracks = await adapter.resolve();
+            const tracks = await adapter.resolve(settings.sourceLang || 'de');
             if (token !== adapterToken) return;
             if (tracks.length > 0) {
                 for (const t of tracks) offerTrack(t);
@@ -177,7 +188,6 @@ function offerTrack(track: CueTrack) {
         if (!better && !sameTrackGrew) return;
     }
 
-    const isNew = !best || best.id !== track.id;
     const wasHungry = !best;
     best = track;
     log.info(`cues: ${track.cues.length} from ${track.source} (${track.label})`);
@@ -185,7 +195,9 @@ function offerTrack(track: CueTrack) {
 
     mountOverlay();
     overlay?.setStatus('');
-    if (isNew) void runTranslation();
+    // A grown track is translated again too: the cache holds every sentence
+    // already done, so only the new ones reach the model.
+    if (video) scheduleTranslation();
 }
 
 function listenToPage() {
@@ -207,21 +219,38 @@ function listenToPage() {
             });
         } else if (d.kind === 'media-meta' && d.title) {
             media = {...media, title: d.title};
+        } else if (d.kind === 'yt-update' && video && !best) {
+            // The caption token arrived: the adapter can fetch tracks now.
+            void resolveViaAdapter();
         }
     });
 }
 
 /* ── Translation ──────────────────────────────────────────────────────────── */
 
+let translateTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Waits for the sources to settle first. A page often offers the same
+ * subtitles several times in its first seconds — captured off the network,
+ * then from a text track, then from the site's API — and each used to start
+ * a full translation of its own.
+ */
+function scheduleTranslation() {
+    translateToken++; // stops whatever is running now, before its next request
+    clearTimeout(translateTimer);
+    translateTimer = setTimeout(() => void runTranslation(), 1200);
+}
+
 async function runTranslation() {
-    if (!best) return;
+    if (!best || !video) return;
     const token = ++translateToken;
     const cues = best.cues;
+    const stale = () => token !== translateToken;
 
-    secondary = new Array(cues.length).fill('');
-    const needsWork = settings.showSecondary
-        && (adapter?.translated !== undefined || (settings.provider === 'deepl' && !!settings.deeplKey.trim()));
-    overlay?.setStatus(needsWork ? 'translating…' : '');
+    // Keep showing what we had until the new job has something, so a grown
+    // track does not blank the line while its first batch is out.
+    if (secondary.length !== cues.length) secondary = new Array(cues.length).fill('');
 
     const lines = await translateCues({
         cues,
@@ -229,16 +258,18 @@ async function runTranslation() {
         settings,
         media,
         adapter,
-        onProgress: (partial, done) => {
-            if (token !== translateToken) return;
-            secondary = partial;
-            if (done) overlay?.setStatus('');
+        now: () => video?.currentTime || 0,
+        isStale: stale,
+        onProgress: partial => {
+            if (!stale()) secondary = partial;
+        },
+        onStatus: (text, ms) => {
+            if (!stale()) overlay?.setStatus(text, ms);
         },
     });
 
-    if (token !== translateToken) return;
+    if (stale()) return;
     secondary = lines;
-    overlay?.setStatus('');
 }
 
 /* ── Overlay + playback sync ──────────────────────────────────────────────── */
@@ -253,14 +284,18 @@ function mountOverlay() {
 
     overlay = new Overlay(video, settings, {
         isSaved: w => savedWords.has(w),
+        savedPhrases: () => [...savedWords].filter(w => w.includes(' ')),
         lookup: async w => {
-            const hit = lookupCache.get(w);
-            if (hit !== undefined) return hit;
-            const tr = await translateOne(w, best?.lang || '', settings);
-            // Cache misses too — a word that has no translation should not be
-            // re-requested every time it reappears on screen.
-            lookupCache.set(w, tr);
-            return tr;
+            const sentence = best?.cues[currentIndex]?.text || '';
+            // Keyed by sentence too: the whole point is the meaning in context.
+            const key = `${w}\n${sentence}`;
+            const hit = lookupCache.get(key);
+            if (hit) return hit;
+            const out = await translateOne(w, sentence, best?.lang || '', settings);
+            // Failures are not cached, so starting the model and clicking
+            // again works.
+            if (!('error' in out)) lookupCache.set(key, out);
+            return out;
         },
         saveWord: async (word, translation) => {
             const entry: VocabEntry = {
@@ -277,6 +312,11 @@ function mountOverlay() {
             };
             savedWords.add(word);
             await addWord(entry);
+        },
+        setMeaning: async (word, translation) => {
+            // Only ever fills a blank, never replaces a meaning already there.
+            const entry = (await getVocab()).find(v => v.word === word && v.url === media.url);
+            if (entry && !entry.translation) await updateWord(word, media.url, {translation});
         },
         removeWord: async word => {
             savedWords.delete(word);

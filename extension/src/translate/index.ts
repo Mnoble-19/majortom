@@ -1,7 +1,8 @@
-import {Cue, MediaInfo, Settings} from '../shared/types';
+import {Cue, Gloss, MediaInfo, Settings} from '../shared/types';
 import {Adapter} from '../capture/adapters';
-import {bgTranslate} from '../shared/messaging';
-import {getCached, setCached} from '../shared/storage';
+import {bgGloss, bgTranslateSubs} from '../shared/messaging';
+import {getSentences, saveSentences} from '../shared/storage';
+import {cueIndexAt} from '../capture/parsers';
 import {log} from '../shared/logger';
 
 /** Translations indexed by primary-cue position, so rendering is a lookup. */
@@ -77,28 +78,75 @@ export interface TranslateOptions {
     settings: Settings;
     media: MediaInfo;
     adapter: Adapter | null;
+    /** Playback position, so the lines you are about to see go first. */
+    now: () => number;
+    /** True once this job has been superseded; checked before every request. */
+    isStale: () => boolean;
     /** Called as batches land, so the overlay fills in while you watch. */
     onProgress: (lines: SecondaryLines, done: boolean) => void;
+    /** Short status for the overlay; '' clears it. */
+    onStatus: (text: string, hideAfterMs?: number) => void;
 }
 
-/** DeepL wants a bare source code; targets keep their region (EN-US). */
-function toSourceCode(hint: string, settings: Settings): string {
-    const explicit = settings.sourceLang.trim();
-    if (explicit) return explicit.toUpperCase();
-    return (hint || '').split('-')[0].toUpperCase();
+/** The source language: what the popup says, else what the track says. */
+function sourceCode(hint: string, settings: Settings): string {
+    return (settings.sourceLang.trim() || hint || '').split('-')[0].toUpperCase();
+}
+
+/**
+ * Small first so the line on screen fills in fast, then larger for
+ * throughput. Capped by length as well as count: automatic captions make
+ * 220-character "sentences", and 24 of those plus their translation would
+ * overrun a 4k context. 1,500 characters stays near 1,500 tokens all told.
+ */
+const FIRST_BATCH = 8;
+const BATCH = 24;
+const BATCH_CHARS = 1500;
+/** Sentences before a batch sent along as context, not translated. */
+const CONTEXT = 3;
+
+/**
+ * Pick where to translate next: the first untranslated sentence at or after
+ * the one playing, else the first one anywhere. Recomputed every batch, so a
+ * seek moves the work to wherever you went.
+ */
+export function nextBatch(
+    done: boolean[], cueGroup: number[], cues: Cue[], t: number, size: number,
+    lengths: number[] = [], maxChars = Infinity,
+): number[] {
+    let at = cueIndexAt(cues, t);
+    if (at < 0) at = cues.findIndex(c => c.start > t);
+    const from = at < 0 ? 0 : cueGroup[at];
+
+    let start = done.indexOf(false, from);
+    if (start < 0) start = done.indexOf(false);
+    if (start < 0) return [];
+
+    const batch: number[] = [];
+    let chars = 0;
+    for (let g = start; g < done.length && batch.length < size && !done[g]; g++) {
+        chars += lengths[g] || 0;
+        // Always at least one, however long, or a long sentence would stall.
+        if (batch.length > 0 && chars > maxChars) break;
+        batch.push(g);
+    }
+    return batch;
 }
 
 export async function translateCues(opts: TranslateOptions): Promise<SecondaryLines> {
-    const {cues, settings, media, adapter, onProgress} = opts;
+    const {cues, settings, media, adapter, onProgress, onStatus, isStale} = opts;
     const empty: SecondaryLines = new Array(cues.length).fill('');
     if (cues.length === 0 || !settings.showSecondary) return empty;
 
-    // 1. The site's own translation is free and instant — always prefer it.
-    if (adapter?.translated) {
+    const target = settings.targetLang;
+
+    // 1. A track a person wrote in your language beats any machine.
+    if (adapter?.nativeTranslation) {
         try {
-            const native = await adapter.translated(settings.targetLang);
-            if (native && native.length > 0) {
-                log.info(`translation: site-provided (${native.length} cues)`);
+            const native = await adapter.nativeTranslation(target);
+            if (isStale()) return empty;
+            if (native?.length) {
+                log.info(`translation: site's own ${target} track (${native.length} cues)`);
                 const lines = alignByTime(cues, native);
                 onProgress(lines, true);
                 return lines;
@@ -108,65 +156,85 @@ export async function translateCues(opts: TranslateOptions): Promise<SecondaryLi
         }
     }
 
-    if (settings.provider !== 'deepl') return empty;
-    if (!settings.deeplKey.trim()) {
-        log.info('translation: no DeepL key set — primary line only');
-        return empty;
-    }
-
+    // 2. The local model, a sentence at a time, starting where you are.
     const {texts, cueGroup} = groupSentences(cues);
-    const source = toSourceCode(opts.sourceLangHint, settings);
-    const target = settings.targetLang;
-    const cacheKey = `${media.key}|${source}|${target}|${cues.length}`;
+    const source = sourceCode(opts.sourceLangHint, settings);
+    const cacheKey = `${media.key}|${source}|${target.split('-')[0]}`;
+    const cache = await getSentences(cacheKey);
+    if (isStale()) return empty;
 
-    const expand = (groups: string[]): SecondaryLines =>
-        cues.map((_, i) => groups[cueGroup[i]] || '');
+    const result = texts.map(t => cache[t] || '');
+    const lengths = texts.map(t => t.length);
+    const done = texts.map(t => t in cache);
 
-    // 2. Cached from a previous watch of the same video.
-    const cached = await getCached(cacheKey);
-    if (cached && cached.length === texts.length) {
-        log.info('translation: cache hit');
-        const lines = expand(cached);
+    const cached = done.filter(Boolean).length;
+    if (cached === texts.length) {
+        log.info('translation: all cached');
+        const lines = cues.map((_, i) => result[cueGroup[i]] || '');
         onProgress(lines, true);
         return lines;
     }
 
-    // 3. Translate in batches, publishing progress as each one returns.
-    log.info(`translation: DeepL ${source || 'auto'}→${target}, ${texts.length} sentences from ${cues.length} cues`);
-    const BATCH = 40;
-    const result: string[] = new Array(texts.length).fill('');
-    let failed = false;
+    // The site's machine translation, where there is one, fills the line at
+    // once while the model works; each sentence is swapped for the model's as
+    // it lands. A cold model takes twenty seconds or more to answer at all.
+    let placeholder: SecondaryLines | null = null;
+    if (adapter?.machineTranslation) {
+        const machine = await adapter.machineTranslation(target).catch(() => null);
+        if (isStale()) return empty;
+        if (machine?.length) placeholder = alignByTime(cues, machine);
+    }
+    const expand = (): SecondaryLines => cues.map((_, i) => result[cueGroup[i]] || placeholder?.[i] || '');
 
-    for (let i = 0; i < texts.length; i += BATCH) {
-        const slice = texts.slice(i, i + BATCH);
-        const out = await bgTranslate(slice, source, target, settings.deeplKey);
-        if (!out) {
-            failed = true;
-            break;
+    log.info(`translation: local model ${source || 'auto'}→${target}, ${texts.length - cached} of ${texts.length} sentences to do`);
+    if (cached || placeholder) onProgress(expand(), false);
+
+    let first = true;
+    for (;;) {
+        const batch = nextBatch(done, cueGroup, cues, opts.now(), first ? FIRST_BATCH : BATCH,
+            lengths, BATCH_CHARS);
+        if (batch.length === 0) break;
+        if (isStale()) return expand();
+
+        const left = done.filter(d => !d).length;
+        onStatus(first && cached === 0
+            ? 'translating…'
+            : `translating… ${Math.round(100 * (1 - left / texts.length))}%`);
+
+        const context = texts.slice(Math.max(0, batch[0] - CONTEXT), batch[0]);
+        const out = await bgTranslateSubs(batch.map(g => texts[g]), context, source, target);
+
+        if ('error' in out) {
+            // Whatever the model finished stays; the rest keeps the site's
+            // machine translation if there is one.
+            onStatus(placeholder
+                ? 'local model unavailable — showing YouTube’s translation'
+                : `translation stopped: ${out.error}`, 10000);
+            onProgress(expand(), true);
+            return expand();
         }
-        for (let k = 0; k < out.length; k++) result[i + k] = out[k];
-        onProgress(expand(result), false);
+
+        batch.forEach((g, k) => {
+            result[g] = out.lines[k];
+            done[g] = true;
+            cache[texts[g]] = out.lines[k];
+        });
+        // Saved even if the job went stale: the work is good, and rewatching
+        // or coming back should not pay for it twice.
+        await saveSentences(cacheKey, cache);
+        if (isStale()) return expand();
+        onProgress(expand(), false);
+        first = false;
     }
 
-    if (failed) {
-        log.warn('translation: aborted after a failed batch');
-        // Keep whatever landed — a partly translated line beats a blank one.
-        return expand(result);
-    }
-
-    await setCached(cacheKey, result);
-    const lines = expand(result);
-    onProgress(lines, true);
-    return lines;
+    onStatus('');
+    onProgress(expand(), true);
+    return expand();
 }
 
-/** Translate a single word or phrase on demand (click-to-look-up). */
+/** Look up a clicked word in the sentence it was said in. */
 export async function translateOne(
-    text: string, sourceHint: string, settings: Settings,
-): Promise<string> {
-    if (settings.provider !== 'deepl' || !settings.deeplKey.trim()) return '';
-    const out = await bgTranslate(
-        [text], toSourceCode(sourceHint, settings), settings.targetLang, settings.deeplKey,
-    );
-    return out?.[0] || '';
+    word: string, sentence: string, sourceHint: string, settings: Settings,
+): Promise<Gloss | { error: string }> {
+    return bgGloss(word, sentence, sourceCode(sourceHint, settings), settings.targetLang);
 }

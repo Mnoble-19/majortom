@@ -42,6 +42,7 @@
         active = !!d.active;
         hideNative = !!d.hideNative;
         hungry = d.hungry !== false;
+        if (d.learning) learning = String(d.learning).toLowerCase();
         if (active) {
             while (pending.length) {
                 const p = pending.shift()!;
@@ -53,55 +54,193 @@
         }
     });
 
-    /* ── YouTube player response ────────────────────────────────────────────── */
+    /* ── YouTube ────────────────────────────────────────────────────────────── */
+
+    const isYouTube = location.hostname.endsWith('youtube.com');
+
+    /**
+     * YouTube answers a caption request with an empty 200 unless it carries a
+     * proof-of-origin token (`pot`) that only the player can mint. So we let
+     * the player make one caption request, keep its token, and add it to the
+     * track URLs we fetch ourselves. The token is per video; one covers every
+     * track of that video.
+     */
+    const tokens = new Map<string, Record<string, string>>();
+    const TOKEN_PARAMS = ['pot', 'potc', 'c', 'cver'];
+
+    /** True for the player's own caption requests, which we never treat as a file. */
+    function isYtTimedtext(url: string): boolean {
+        return isYouTube && url.includes('/api/timedtext');
+    }
+
+    function noteYtToken(url: string) {
+        try {
+            const u = new URL(url, location.origin);
+            const v = u.searchParams.get('v');
+            if (!v || !u.searchParams.get('pot') || tokens.has(v)) return;
+            const params: Record<string, string> = {};
+            for (const k of TOKEN_PARAMS) {
+                const val = u.searchParams.get(k);
+                if (val) params[k] = val;
+            }
+            tokens.set(v, params);
+            exposeYouTube();
+        } catch { /* ignore */
+        }
+    }
+
+    function ytPlayer(): any {
+        return document.getElementById('movie_player');
+    }
+
+    /** The minified audio-track object keeps its readable fields one level down. */
+    function audioInfo(track: any): { id: string; isDefault?: boolean } | null {
+        if (!track) return null;
+        for (const k of Object.keys(track)) {
+            const v = track[k];
+            if (v && typeof v === 'object' && !Array.isArray(v) && 'isDefault' in v && 'id' in v) return v;
+        }
+        return null;
+    }
+
+    /**
+     * The track id is `itag;<base64 protobuf>`, and that protobuf names the
+     * track's kind: `original`, `dubbed` or `dubbed-auto`.
+     */
+    function audioKind(track: any): string {
+        try {
+            const b64 = String(track.id).split(';')[1] || '';
+            const raw = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((b64.length + 3) % 4));
+            return raw.match(/acont\x12.([a-z-]+)/)?.[1] || '';
+        } catch {
+            return '';
+        }
+    }
+
+    const langOf = (track: any) => (audioInfo(track)?.id || '').split('.')[0].split('-')[0].toLowerCase();
+
+    /** What we are told by the content script: the language being learned. */
+    let learning = 'de';
+    const audioChecked = new Set<string>();
+
+    /**
+     * YouTube dubs videos into your interface language, so a German video
+     * can start playing in English. Put it back to the original, unless the
+     * dub is in the language being learned — then it is exactly what you want.
+     */
+    function keepOriginalAudio(p: any, v: string) {
+        if (audioChecked.has(v)) return;
+        const list: any[] = p.getAvailableAudioTracks?.() || [];
+        if (list.length < 2) {
+            // The list fills in a moment after the video loads.
+            if (p.getPlayerState?.() === 1) audioChecked.add(v);
+            return;
+        }
+        audioChecked.add(v);
+        const current = p.getAudioTrack?.();
+        if (audioKind(current) === 'original' || langOf(current) === learning) return;
+        const original = list.find(t => audioKind(t) === 'original')
+            || list.find(t => audioInfo(t)?.isDefault);
+        if (original && audioInfo(original)?.id !== audioInfo(current)?.id) p.setAudioTrack(original);
+    }
+
+    /** How often, and when last, we switched captions on for each video. */
+    const forced = new Map<string, { tries: number; at: number }>();
+
+    /**
+     * The player only asks for captions while they are switched on. Switch
+     * them on long enough to see a request, then back off if they were off —
+     * our overlay hides YouTube's own rendering anyway.
+     */
+    function provokeCaptionRequest(p: any, v: string) {
+        if (tokens.has(v)) return;
+        // Not before the player has started, when it has no caption module yet.
+        if (p.getVideoData?.()?.video_id !== v || p.getPlayerState?.() === -1) return;
+        let last = forced.get(v);
+        if (!last && p.isSubtitlesOn?.()) {
+            // Captions already on: the player is about to ask by itself.
+            last = {tries: 0, at: Date.now()};
+            forced.set(v, last);
+        }
+        last ||= {tries: 0, at: 0};
+        if (last.tries >= 4 || Date.now() - last.at < 4000) return;
+        forced.set(v, {tries: last.tries + 1, at: Date.now()});
+        try {
+            if (p.isSubtitlesOn?.()) {
+                // Already on but no request seen (it went out before we were
+                // listening): cycle them to make the player ask again.
+                p.toggleSubtitles();
+                setTimeout(() => p.toggleSubtitlesOn(), 300);
+            } else {
+                p.toggleSubtitlesOn();
+                const check = setInterval(() => {
+                    if (!tokens.has(v)) return;
+                    clearInterval(check);
+                    if (p.isSubtitlesOn?.()) p.toggleSubtitles();
+                }, 250);
+                setTimeout(() => clearInterval(check), 8000);
+            }
+        } catch { /* ignore */
+        }
+    }
+
+    let lastPublished = '';
 
     /**
      * Copied onto a DOM attribute rather than posted, so the content script can
      * read it synchronously whenever it likes instead of racing a message.
+     *
+     * Read from the player itself: `ytInitialPlayerResponse` is only the page
+     * YouTube first loaded, and is never updated as you click between videos.
      */
-    function exposeYouTubeTracks() {
+    function exposeYouTube() {
         try {
-            const pr = (window as any).ytInitialPlayerResponse
-                || (window as any).ytplayer?.config?.args?.raw_player_response;
-            const tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-            if (!Array.isArray(tracks) || tracks.length === 0) return;
+            const p = ytPlayer();
+            const pr = p?.getPlayerResponse?.() || (window as any).ytInitialPlayerResponse;
+            const v: string = pr?.videoDetails?.videoId || '';
+            if (!v || v !== new URLSearchParams(location.search).get('v')) return;
 
-            // Stamped with the video id: YouTube swaps pages faster than it refreshes
-            // this object, and un-stamped data would load the previous video's track.
-            document.documentElement.setAttribute('data-majortom-yt', JSON.stringify({
-                v: pr?.videoDetails?.videoId || '',
-                tracks: tracks.map((t: any) => ({
+            const tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+            // During an ad the player still reports the main video's id, but
+            // its audio tracks and captions are the ad's; leave it alone.
+            const inAd = !!p?.classList?.contains('ad-showing');
+            if (active && p && !inAd) {
+                keepOriginalAudio(p, v);
+                if (Array.isArray(tracks) && tracks.length) provokeCaptionRequest(p, v);
+            }
+
+            const payload = JSON.stringify({
+                v,
+                token: tokens.get(v) || null,
+                audio: p && !inAd ? langOf(p.getAudioTrack?.()) : '',
+                tracks: (Array.isArray(tracks) ? tracks : []).map((t: any) => ({
                     baseUrl: t.baseUrl,
                     languageCode: t.languageCode,
                     name: t.name?.simpleText || t.name?.runs?.[0]?.text || t.languageCode,
                     kind: t.kind,
                 })),
-            }));
+            });
+            if (payload === lastPublished) return;
+            lastPublished = payload;
+            // Stamped with the video id: the content script refuses a payload
+            // that does not match the URL it is looking at.
+            document.documentElement.setAttribute('data-majortom-yt', payload);
+            post({kind: 'yt-update', v});
             const title = pr?.videoDetails?.title;
             if (title) post({kind: 'media-meta', title});
         } catch { /* ignore */
         }
     }
 
-    if (location.hostname.endsWith('youtube.com')) {
-        // Drop stale data the instant navigation starts, then republish once the
-        // new player response has landed.
-        const refresh = () => {
+    if (isYouTube) {
+        // Cheap, and the only thing that reliably notices everything: SPA
+        // navigations, ads ending, the audio track list appearing.
+        setInterval(exposeYouTube, 1000);
+        window.addEventListener('yt-navigate-start', () => {
             document.documentElement.removeAttribute('data-majortom-yt');
-            exposeYouTubeTracks();
-            for (const delay of [400, 900, 1800]) setTimeout(exposeYouTubeTracks, delay);
-        };
-
-        exposeYouTubeTracks();
-        document.addEventListener('readystatechange', exposeYouTubeTracks);
-        window.addEventListener('yt-navigate-start', refresh);
-        window.addEventListener('yt-navigate-finish', refresh);
-        const push = history.pushState;
-        history.pushState = function (...args: Parameters<typeof history.pushState>) {
-            const r = push.apply(this, args);
-            refresh();
-            return r;
-        };
+            lastPublished = '';
+        });
+        window.addEventListener('yt-navigate-finish', exposeYouTube);
     }
 
     /* ── Native TextTracks ──────────────────────────────────────────────────── */
@@ -220,7 +359,9 @@
                 : (input as Request)?.url || '';
         const p = origFetch.apply(this, arguments as any);
 
-        if (url && !NOISE.test(url)) {
+        if (isYtTimedtext(url)) {
+            noteYtToken(url);
+        } else if (url && !NOISE.test(url)) {
             p.then((res: Response) => {
                 if (!res.ok) return;
                 if (interesting(url, res.headers.get('content-type'))) {
@@ -240,34 +381,39 @@
         return p;
     };
 
-    const OrigXHR = window.XMLHttpRequest;
+    /**
+     * Patches `open` on the prototype rather than replacing the constructor.
+     * Ad blockers (uBlock, Brave Shields) subclass XMLHttpRequest on YouTube;
+     * a replaced constructor that returns a plain instance would silently drop
+     * their subclass methods, whichever of us loaded first. A prototype patch
+     * stacks cleanly with theirs in either order.
+     */
+    const xhrUrls = new WeakMap<XMLHttpRequest, string>();
+    const origOpen = XMLHttpRequest.prototype.open;
 
-    function PatchedXHR(this: any) {
-        const xhr = new OrigXHR();
-        let url = '';
-        const open = xhr.open;
-        xhr.open = function (_method: string, u: string | URL) {
-            url = String(u);
-            return open.apply(xhr, arguments as any);
-        };
-        xhr.addEventListener('load', () => {
-            try {
-                // responseText throws for non-text responseTypes — check before reading.
-                if (xhr.responseType && xhr.responseType !== 'text') return;
-                const ct = xhr.getResponseHeader('content-type');
-                if (interesting(url, ct)) {
-                    emitSubFile(url, xhr.responseText || '');
-                } else if (hungry && ct && /text|json|xml/i.test(ct)) {
-                    const body = xhr.responseText || '';
-                    if (body.length <= 4 * 1024 * 1024 && looksLikeSubtitles(body)) emitSubFile(url, body);
-                }
-            } catch { /* ignore */
+    XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, _method: string, u: string | URL) {
+        const url = String(u);
+        if (isYtTimedtext(url)) noteYtToken(url);
+        else if (!xhrUrls.has(this)) this.addEventListener('load', onXhrLoad);
+        xhrUrls.set(this, url);
+        return origOpen.apply(this, arguments as any);
+    } as typeof XMLHttpRequest.prototype.open;
+
+    function onXhrLoad(this: XMLHttpRequest) {
+        try {
+            const url = xhrUrls.get(this) || '';
+            // responseText throws for non-text responseTypes — check before reading.
+            if (this.responseType && this.responseType !== 'text') return;
+            // The YouTube adapter fetches its own tracks with the token.
+            if (isYtTimedtext(url)) return;
+            const ct = this.getResponseHeader('content-type');
+            if (interesting(url, ct)) {
+                emitSubFile(url, this.responseText || '');
+            } else if (hungry && ct && /text|json|xml/i.test(ct)) {
+                const body = this.responseText || '';
+                if (body.length <= 4 * 1024 * 1024 && looksLikeSubtitles(body)) emitSubFile(url, body);
             }
-        });
-        return xhr;
+        } catch { /* ignore */
+        }
     }
-
-    PatchedXHR.prototype = OrigXHR.prototype;
-    Object.setPrototypeOf(PatchedXHR, OrigXHR);
-    (window as any).XMLHttpRequest = PatchedXHR;
 })();

@@ -19,7 +19,7 @@ export function parse(body: string, url = ''): Cue[] {
     try {
         switch (detectFormat(body, url)) {
             case 'json3':
-                return normalise(parseJSON3(body));
+                return clipOverlaps(normalise(parseJSON3(body)));
             case 'vtt':
                 return normalise(parseVTT(body));
             case 'ttml':
@@ -41,10 +41,27 @@ export function parseJSON3(json: string): Cue[] {
     const cues: Cue[] = [];
     for (const ev of data.events || []) {
         if (!ev.segs) continue;
-        const text = ev.segs.map((s: { utf8?: string }) => s.utf8 || '').join('').replace(/\s+/g, ' ').trim();
+        const text = ev.segs.map((s: { utf8?: string }) => s.utf8 || '').join('')
+            // Authored tracks are padded with zero-width spaces, which `\s`
+            // does not match and which would stick to the clickable words.
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .replace(/\s+/g, ' ').trim();
         if (!text) continue;
         const start = (ev.tStartMs || 0) / 1000;
         cues.push({start, end: start + (ev.dDurationMs || 0) / 1000, text});
+    }
+    return cues;
+}
+
+/**
+ * YouTube's automatic captions roll: each line stays up until the one after
+ * next arrives, so consecutive cues overlap by a couple of seconds. Left as
+ * is, the lookup keeps showing the older line well into the newer one.
+ */
+export function clipOverlaps(cues: Cue[]): Cue[] {
+    for (let i = 0; i < cues.length - 1; i++) {
+        const next = cues[i + 1];
+        if (next.start > cues[i].start && cues[i].end > next.start) cues[i].end = next.start;
     }
     return cues;
 }

@@ -1,7 +1,16 @@
 import {Settings, VocabEntry} from '../shared/types';
-import {SOURCE_LANGS, TARGET_LANGS} from '../shared/config';
-import {clearCache, getSettings, getVocab, removeWord, setSettings, toggleStar,} from '../shared/storage';
-import {bgTranslate} from '../shared/messaging';
+import {DEFAULT_SETTINGS, SOURCE_LANGS, TARGET_LANGS} from '../shared/config';
+import {
+    clearCache,
+    getSettings,
+    getVocab,
+    isHostEnabled,
+    removeWord,
+    setSettings,
+    siteOf,
+    toggleStar,
+} from '../shared/storage';
+import {bgGloss, bgSyncScripts} from '../shared/messaging';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -41,29 +50,36 @@ function bindToggle(id: keyof Settings) {
     });
 }
 
-async function currentHost(): Promise<string> {
+async function currentTab(): Promise<{id?: number; host: string}> {
     const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
     try {
-        return new URL(tab?.url || '').hostname.replace(/^www\./, '');
+        const url = new URL(tab?.url || '');
+        // chrome://, file:// and the like are never somewhere to turn it on.
+        return {id: tab?.id, host: /^https?:$/.test(url.protocol) ? siteOf(url.hostname) : ''};
     } catch {
-        return '';
+        return {id: tab?.id, host: ''};
     }
 }
 
 async function initSettings() {
     settings = await getSettings();
-    host = await currentHost();
+    const tab = await currentTab();
+    host = tab.host;
 
     $('siteLabel').textContent = host || 'no active site';
 
     const siteToggle = $<HTMLInputElement>('siteToggle');
-    const enabledHere = settings.enabled && !settings.disabledHosts.includes(host);
-    siteToggle.checked = enabledHere;
+    siteToggle.checked = !!host && isHostEnabled(settings, host);
     siteToggle.disabled = !host;
     siteToggle.addEventListener('change', async () => {
-        const disabled = new Set(settings.disabledHosts);
-        if (siteToggle.checked) disabled.delete(host); else disabled.add(host);
-        settings = await setSettings({enabled: true, disabledHosts: [...disabled]});
+        const hosts = new Set(settings.enabledHosts);
+        if (siteToggle.checked) hosts.add(host); else hosts.delete(host);
+        settings = await setSettings({enabledHosts: [...hosts]});
+        // The page scripts go in at document_start, so the tab has to load
+        // again either way: to get them, or to be rid of the patched fetch.
+        await bgSyncScripts();
+        if (tab.id !== undefined) await chrome.tabs.reload(tab.id);
+        window.close();
     });
 
     fillSelect($<HTMLSelectElement>('sourceLang'), SOURCE_LANGS, settings.sourceLang);
@@ -75,7 +91,7 @@ async function initSettings() {
         settings = await setSettings({targetLang: (e.target as HTMLSelectElement).value});
     });
 
-    (['showSecondary', 'blurSecondary', 'autoPause', 'loopCue', 'hideNativeCaptions'] as const)
+    (['showSecondary', 'blurSecondary', 'hoverPause', 'autoPause', 'loopCue', 'hideNativeCaptions'] as const)
         .forEach(bindToggle);
 
     const font = $<HTMLInputElement>('fontScale');
@@ -90,41 +106,42 @@ async function initSettings() {
         settings = await setSettings({offsetPct: Number(offset.value)});
     });
 
-    const key = $<HTMLInputElement>('deeplKey');
-    key.value = settings.deeplKey;
-    let keyTimer: number;
-    key.addEventListener('input', () => {
-        clearTimeout(keyTimer);
-        keyTimer = window.setTimeout(async () => {
-            settings = await setSettings({deeplKey: key.value.trim()});
-        }, 350);
-    });
+    bindText('llmEndpoint', v => v.replace(/\/+$/, ''));
+    bindText('llmModel', v => v);
 
-    $('testKey').addEventListener('click', () => void testKey());
+    $('testModel').addEventListener('click', () => void testModel());
     $('clearCache').addEventListener('click', async () => {
         await clearCache();
         setStatus('Translation cache cleared.', 'ok');
     });
 }
 
+/** A text setting saved as you type; empty falls back to the default. */
+function bindText(id: 'llmEndpoint' | 'llmModel', clean: (v: string) => string) {
+    const input = $<HTMLInputElement>(id);
+    // The endpoint shows its default as a placeholder, so an untouched field
+    // stays empty and a better default still reaches it.
+    input.value = settings[id] === DEFAULT_SETTINGS[id] ? '' : settings[id];
+    let timer: number;
+    input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = window.setTimeout(async () => {
+            settings = await setSettings({[id]: clean(input.value.trim()) || DEFAULT_SETTINGS[id]});
+        }, 350);
+    });
+}
+
 function setStatus(msg: string, cls: 'ok' | 'err' | 'busy') {
-    const el = $('keyStatus');
+    const el = $('modelStatus');
     el.textContent = msg;
     el.className = `status ${cls}`;
 }
 
-async function testKey() {
-    const key = $<HTMLInputElement>('deeplKey').value.trim();
-    if (!key) {
-        setStatus('Enter a key first.', 'err');
-        return;
-    }
-    settings = await setSettings({deeplKey: key});
-
-    setStatus('Testing…', 'busy');
-    const out = await bgTranslate(['Guten Morgen'], 'DE', settings.targetLang, key);
-    if (out?.[0]) setStatus(`Working — "Guten Morgen" → "${out[0]}"`, 'ok');
-    else setStatus('Key rejected. Check it was copied in full.', 'err');
+async function testModel() {
+    setStatus('Asking the model… (the first request loads it, which can take a while)', 'busy');
+    const out = await bgGloss('abbringen', 'Sie hat sich nicht davon abbringen lassen.', 'DE', settings.targetLang);
+    if ('error' in out) setStatus(`Not working: ${out.error}`, 'err');
+    else setStatus(`Working — “abbringen” → “${out.meaning}”`, 'ok');
 }
 
 /* ── Words ────────────────────────────────────────────────────────────────── */
