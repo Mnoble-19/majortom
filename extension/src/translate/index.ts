@@ -93,9 +93,15 @@ function sourceCode(hint: string, settings: Settings): string {
     return (settings.sourceLang.trim() || hint || '').split('-')[0].toUpperCase();
 }
 
-/** Small first so the line on screen fills in fast, then larger for throughput. */
+/**
+ * Small first so the line on screen fills in fast, then larger for
+ * throughput. Capped by length as well as count: automatic captions make
+ * 220-character "sentences", and 24 of those plus their translation would
+ * overrun a 4k context. 1,500 characters stays near 1,500 tokens all told.
+ */
 const FIRST_BATCH = 8;
 const BATCH = 24;
+const BATCH_CHARS = 1500;
 /** Sentences before a batch sent along as context, not translated. */
 const CONTEXT = 3;
 
@@ -106,6 +112,7 @@ const CONTEXT = 3;
  */
 export function nextBatch(
     done: boolean[], cueGroup: number[], cues: Cue[], t: number, size: number,
+    lengths: number[] = [], maxChars = Infinity,
 ): number[] {
     let at = cueIndexAt(cues, t);
     if (at < 0) at = cues.findIndex(c => c.start > t);
@@ -116,7 +123,13 @@ export function nextBatch(
     if (start < 0) return [];
 
     const batch: number[] = [];
-    for (let g = start; g < done.length && batch.length < size && !done[g]; g++) batch.push(g);
+    let chars = 0;
+    for (let g = start; g < done.length && batch.length < size && !done[g]; g++) {
+        chars += lengths[g] || 0;
+        // Always at least one, however long, or a long sentence would stall.
+        if (batch.length > 0 && chars > maxChars) break;
+        batch.push(g);
+    }
     return batch;
 }
 
@@ -151,6 +164,7 @@ export async function translateCues(opts: TranslateOptions): Promise<SecondaryLi
     if (isStale()) return empty;
 
     const result = texts.map(t => cache[t] || '');
+    const lengths = texts.map(t => t.length);
     const done = texts.map(t => t in cache);
 
     const cached = done.filter(Boolean).length;
@@ -177,7 +191,8 @@ export async function translateCues(opts: TranslateOptions): Promise<SecondaryLi
 
     let first = true;
     for (;;) {
-        const batch = nextBatch(done, cueGroup, cues, opts.now(), first ? FIRST_BATCH : BATCH);
+        const batch = nextBatch(done, cueGroup, cues, opts.now(), first ? FIRST_BATCH : BATCH,
+            lengths, BATCH_CHARS);
         if (batch.length === 0) break;
         if (isStale()) return expand();
 

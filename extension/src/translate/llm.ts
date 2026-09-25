@@ -166,8 +166,8 @@ export async function translateSubs(
 /* ── Clicked words ────────────────────────────────────────────────────────── */
 
 function glossPrompt(source: string, target: string, field: string): string {
-    return `You help someone learning ${source || 'a language'}. You are given a word and the subtitle line it appeared in.
-\`dictionary_form\` is the form you would look the word up under: the infinitive for a verb (joined with a separable prefix that sits elsewhere in the line), the nominative singular with its article for a noun.
+    return `You help someone learning ${source || 'a language'}. You are given a word or phrase and the subtitle line it appeared in.
+\`dictionary_form\` is the form you would look it up under: the infinitive for a verb (joined with a separable prefix that sits elsewhere in the line), the nominative singular with its article for a noun.
 \`${field}\` is a short ${target} gloss of the sense used in this line, not every sense. If the word only makes sense here as part of a fixed expression, gloss the expression.`;
 }
 

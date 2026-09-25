@@ -245,6 +245,8 @@ console.log('\nPlayhead-first batching');
     eq('wraps to the start when the rest is done',
         nextBatch(none.map((_, i) => i >= 3), cueGroup, cues, 42, 5).join(), '0,1,2');
     eq('all done → nothing', nextBatch(new Array(10).fill(true), cueGroup, cues, 0, 5).length, 0);
+    eq('capped by length', nextBatch(none, cueGroup, cues, 0, 10, new Array(10).fill(600), 1500).join(), '0,1');
+    eq('one long sentence still goes', nextBatch(none, cueGroup, cues, 0, 10, new Array(10).fill(5000), 1500).join(), '0');
 }
 
 /* ── Live ARD (opt-in) ────────────────────────────────────────────────────── */
