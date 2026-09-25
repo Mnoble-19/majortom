@@ -7,7 +7,7 @@ import SwiftUI
 ///
 /// Translation is configured here rather than in the calls app because it is a
 /// library job: words arrive untranslated from the phone, from the reMarkable
-/// with no wifi, and from the browser when DeepL is down, and all of them get
+/// with no wifi, and from the browser when its model is down, and all of them get
 /// filled in from here.
 struct SettingsView: View {
     @AppStorage("appearance") private var appearance = Appearance.system

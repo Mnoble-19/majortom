@@ -58,7 +58,7 @@ enum NativeHost {
     /// first sync doubles as the initial import.
     ///
     /// An empty translation never overwrites a filled one: the browser sends
-    /// blanks when DeepL is down, and the library may have filled them since.
+    /// blanks when the local model is down, and the library may have filled them since.
     ///
     /// Deliberately does not update `starred` on conflict. The browser only
     /// ever reports what it knows, so resending would wipe anything starred in
