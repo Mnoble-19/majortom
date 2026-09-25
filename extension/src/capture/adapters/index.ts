@@ -6,7 +6,7 @@ import {youtube} from './youtube';
 
 export type {Adapter} from './adapter';
 export {pickArdSubtitleUrl} from './ard';
-export {parseYtPayload} from './youtube';
+export {parseYtPayload, pickSpokenTrack} from './youtube';
 
 /** Add a new site by writing its adapter alongside these and listing it here. */
 const ADAPTERS: Adapter[] = [ard, zdf, youtube];

@@ -23,14 +23,21 @@ export interface Adapter {
 
     title(): string;
 
-    /** Subtitles in the video's own language. */
-    resolve(): Promise<CueTrack[]>;
+    /**
+     * Subtitles in the video's own language. `learning` is the language set in
+     * the popup, for sites that offer several tracks.
+     */
+    resolve(learning: string): Promise<CueTrack[]>;
+
+    /** A human-made track in the target language, when the site has one. */
+    nativeTranslation?(target: string): Promise<Cue[] | null>;
 
     /**
-     * Some sites can serve a machine translation themselves (YouTube's `tlang`),
-     * which is free and instant. Returning null falls through to the translator.
+     * The site's own machine translation (YouTube's `tlang`). Free and
+     * instant but line by line, so it is the fallback when the local model is
+     * not running rather than the first choice.
      */
-    translated?(target: string): Promise<Cue[] | null>;
+    machineTranslation?(target: string): Promise<Cue[] | null>;
 }
 
 /** Collect every string in a JSON structure matching a predicate. */
