@@ -10,6 +10,9 @@ export interface OverlayHooks {
 
     saveWord(word: string, translation: string): Promise<void>;
 
+    /** Fill in the meaning of something saved before its lookup came back. */
+    setMeaning(word: string, translation: string): Promise<void>;
+
     removeWord(word: string): Promise<void>;
 
     patchSettings(patch: Partial<Settings>): void;
@@ -519,6 +522,8 @@ export class Overlay {
             return;
         }
         meaning = out.meaning;
+        // Saved while this was still out, or saved blank before: fill it in.
+        if (this.hooks.isSaved(text)) void this.hooks.setMeaning(text, meaning);
         // `holt` → `rausholen`: only worth a line when it adds something.
         if (out.form.toLowerCase() !== raw.toLowerCase()) this.cardForm.textContent = out.form;
         this.cardTr.textContent = out.meaning;

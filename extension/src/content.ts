@@ -12,6 +12,7 @@ import {
   onSettingsChanged,
   removeWordEverywhere,
   setSettings,
+  updateWord,
 } from './shared/storage';
 import {log} from './shared/logger';
 
@@ -311,6 +312,11 @@ function mountOverlay() {
             };
             savedWords.add(word);
             await addWord(entry);
+        },
+        setMeaning: async (word, translation) => {
+            // Only ever fills a blank, never replaces a meaning already there.
+            const entry = (await getVocab()).find(v => v.word === word && v.url === media.url);
+            if (entry && !entry.translation) await updateWord(word, media.url, {translation});
         },
         removeWord: async word => {
             savedWords.delete(word);
