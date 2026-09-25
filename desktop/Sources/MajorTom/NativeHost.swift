@@ -74,12 +74,12 @@ enum NativeHost {
             switch mutation.kind {
             case "delete":
                 try db.run("""
-                    DELETE FROM item WHERE kind = 'word' AND text = ? AND source_id IN
+                    DELETE FROM item WHERE kind IN ('word', 'phrase') AND text = ? AND source_id IN
                         (SELECT id FROM source WHERE kind = 'show' AND url = ?)
                     """, [mutation.word, mutation.url])
             case "star":
                 try db.run("""
-                    UPDATE item SET starred = ? WHERE kind = 'word' AND text = ? AND source_id IN
+                    UPDATE item SET starred = ? WHERE kind IN ('word', 'phrase') AND text = ? AND source_id IN
                         (SELECT id FROM source WHERE kind = 'show' AND url = ?)
                     """, [mutation.starred ?? false, mutation.word, mutation.url])
             default:
@@ -118,7 +118,7 @@ enum NativeHost {
             try db.run("""
                 INSERT INTO item (source_id, kind, text, translation, context,
                                   context_translation, position, starred, created_at)
-                VALUES (?, 'word', ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(source_id, kind, text) DO UPDATE SET
                     translation = COALESCE(NULLIF(excluded.translation, ''), item.translation),
                     context = COALESCE(NULLIF(item.context, ''), excluded.context),
@@ -126,7 +126,10 @@ enum NativeHost {
                         NULLIF(excluded.context_translation, ''), item.context_translation),
                     position = excluded.position
                 """, [
-                    sourceID, entry.word, entry.translation ?? "", entry.context ?? "",
+                    // Shift-clicked phrases arrive in the same list; the
+                    // calls app and the reMarkable make the same split.
+                    sourceID, entry.word.contains(" ") ? "phrase" : "word",
+                    entry.word, entry.translation ?? "", entry.context ?? "",
                     entry.contextTranslation ?? "", entry.time ?? 0,
                     entry.starred ?? false, createdAt,
                 ])
