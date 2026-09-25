@@ -3,6 +3,9 @@ import {Gloss, Settings} from '../shared/types';
 export interface OverlayHooks {
     isSaved(word: string): boolean;
 
+    /** Saved phrases, so their words can be marked where they reappear. */
+    savedPhrases(): string[];
+
     lookup(word: string): Promise<Gloss | { error: string }>;
 
     saveWord(word: string, translation: string): Promise<void>;
@@ -79,7 +82,7 @@ const STYLE = `
 .w { cursor: pointer; border-radius: .25em; padding: 0 .04em; transition: background .1s, color .1s; }
 .w:hover { background: rgba(255,255,255,.2); }
 .w.saved { background: var(--highlight); color: var(--on-highlight); text-shadow: none; }
-.w.active { background: #fff; color: #1c1c1e; text-shadow: none; }
+.w.active, .w.selecting { background: #fff; color: #1c1c1e; text-shadow: none; }
 
 .status {
   pointer-events: none; font-size: 12px; font-weight: 600; color: #e6e7eb;
@@ -155,7 +158,7 @@ export class Overlay {
 
     private lastPrimary = '';
     private lastSecondary = '';
-    /** The clicked word, or every word of a shift-clicked phrase. */
+    /** The clicked word, or every word of a selected phrase. */
     private activeWords: HTMLElement[] = [];
     private cardHint!: HTMLElement;
     /** Hover targets currently under the pointer: the lines and the card. */
@@ -253,10 +256,16 @@ export class Overlay {
 
     /** Repaint saved-state highlighting without rebuilding the line. */
     refreshSaved(): void {
-        this.primaryEl.querySelectorAll('.w').forEach(node => {
-            const span = node as HTMLElement;
-            span.classList.toggle('saved', this.hooks.isSaved(norm(span.textContent || '')));
-        });
+        const spans = Array.from(this.primaryEl.querySelectorAll<HTMLElement>('.w'));
+        const words = spans.map(s => norm(s.textContent || ''));
+        const marked = words.map(w => this.hooks.isSaved(w));
+        for (const phrase of this.hooks.savedPhrases()) {
+            const parts = phrase.split(' ');
+            for (let i = 0; i + parts.length <= words.length; i++) {
+                if (parts.every((p, k) => words[i + k] === p)) parts.forEach((_, k) => marked[i + k] = true);
+            }
+        }
+        spans.forEach((s, i) => s.classList.toggle('saved', marked[i]));
     }
 
     applySettings(s: Settings): void {
@@ -321,28 +330,84 @@ export class Overlay {
 
     private onDocClick = (e: Event) => {
         if (!this.card.classList.contains('open')) return;
-        if (!e.composedPath().includes(this.card)) this.closeCard();
+        // Clicks on the line are the words' own business: this runs first, and
+        // closing here would drop the start of a shift-clicked phrase.
+        const path = e.composedPath();
+        if (!path.includes(this.card) && !path.includes(this.primaryEl)) this.closeCard();
+    };
+
+    /* ── Selecting words ────────────────────────────────────────────────────── */
+
+    /** The word a drag started on, while the button is down. */
+    private dragFrom: HTMLElement | null = null;
+    private dragTo: HTMLElement | null = null;
+
+    private wordsBetween(a: HTMLElement, b: HTMLElement): HTMLElement[] {
+        const words = Array.from(this.primaryEl.querySelectorAll<HTMLElement>('.w'));
+        const i = words.indexOf(a), j = words.indexOf(b);
+        if (i < 0 || j < 0) return [b];
+        return words.slice(Math.min(i, j), Math.max(i, j) + 1);
+    }
+
+    private onWordDown = (e: MouseEvent, span: HTMLElement) => {
+        if (e.button !== 0) return;
+        // Keeps the browser from starting a text selection, and the player
+        // from treating it as a click on the video.
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.shiftKey && this.activeWords.length) {
+            void this.openCard(this.wordsBetween(this.activeWords[0], span));
+            return;
+        }
+        this.dragFrom = this.dragTo = span;
+        this.previewDrag();
+        document.addEventListener('mouseup', this.onDragEnd, true);
+    };
+
+    private onWordOver = (span: HTMLElement) => {
+        if (!this.dragFrom || span === this.dragTo) return;
+        this.dragTo = span;
+        this.previewDrag();
+    };
+
+    private previewDrag(): void {
+        this.primaryEl.querySelectorAll('.w.selecting').forEach(n => n.classList.remove('selecting'));
+        if (!this.dragFrom || !this.dragTo) return;
+        this.wordsBetween(this.dragFrom, this.dragTo).forEach(n => n.classList.add('selecting'));
+    }
+
+    /** One word if you just clicked, the run between if you dragged. */
+    private onDragEnd = (e: MouseEvent) => {
+        document.removeEventListener('mouseup', this.onDragEnd, true);
+        const from = this.dragFrom, to = this.dragTo;
+        this.dragFrom = this.dragTo = null;
+        this.previewDrag();
+        if (!from || !to) return;
+        e.stopPropagation();
+        void this.openCard(this.wordsBetween(from, to));
     };
 
     /**
-     * Anchor to whatever box the video actually occupies — the fullscreen element
-     * when there is one, otherwise the nearest positioned ancestor.
+     * Anchor to the box the video actually occupies: its nearest positioned
+     * ancestor. In fullscreen, that search stops at the fullscreen element,
+     * since nothing outside it is drawn.
+     *
+     * The fullscreen element itself is only the fallback. YouTube puts its
+     * whole page app in fullscreen, a box thousands of pixels tall, so
+     * anchoring there put the subtitles far below the screen; its player,
+     * which it stretches to fill the screen, is the right box.
      */
     private attachToBestParent(): void {
         const fs = (document.fullscreenElement || (document as any).webkitFullscreenElement) as HTMLElement | null;
-        let parent: HTMLElement | null = null;
+        const stop = fs && fs.contains(this.video) ? fs : document.body;
 
-        if (fs) {
-            parent = fs;
-        } else {
-            let n: HTMLElement | null = this.video.parentElement;
-            while (n && n !== document.body) {
-                const cs = getComputedStyle(n);
-                if (cs.position !== 'static' && n.clientHeight > 80) break;
-                n = n.parentElement;
-            }
-            parent = n || this.video.parentElement;
+        let n: HTMLElement | null = this.video.parentElement;
+        while (n && n !== stop && n !== document.body) {
+            const cs = getComputedStyle(n);
+            if (cs.position !== 'static' && n.clientHeight > 80) break;
+            n = n.parentElement;
         }
+        const parent = n && n !== document.body ? n : (fs && fs !== this.video ? fs : this.video.parentElement);
         if (!parent) return;
 
         if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
@@ -383,17 +448,17 @@ export class Overlay {
 
             const span = el('span', 'w');
             span.textContent = m[0];
-            if (this.hooks.isSaved(norm(m[0]))) span.classList.add('saved');
-            span.addEventListener('click', e => {
-                e.stopPropagation();
-                if (e.shiftKey && this.activeWords.length) this.extendToPhrase(span);
-                else void this.openCard([span]);
-            });
+            span.addEventListener('mousedown', e => this.onWordDown(e, span));
+            span.addEventListener('mouseenter', () => this.onWordOver(span));
+            // The card opens on mouseup; the click only has to stay away from
+            // the player, which would otherwise pause or play the video.
+            span.addEventListener('click', e => e.stopPropagation());
             frag.appendChild(span);
             last = i + m[0].length;
         }
         if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
         this.primaryEl.appendChild(frag);
+        this.refreshSaved();
     }
 
     private buildCard(): HTMLElement {
@@ -415,18 +480,6 @@ export class Overlay {
         return card;
     }
 
-    /**
-     * Shift-click a second word on the line to take everything between the
-     * two as a phrase, the same gesture as the calls app.
-     */
-    private extendToPhrase(span: HTMLElement): void {
-        const words = Array.from(this.primaryEl.querySelectorAll<HTMLElement>('.w'));
-        const a = words.indexOf(this.activeWords[0]), b = words.indexOf(span);
-        void this.openCard(a < 0 || b < 0 || a === b
-            ? [span]
-            : words.slice(Math.min(a, b), Math.max(a, b) + 1));
-    }
-
     private async openCard(spans: HTMLElement[]): Promise<void> {
         const raw = spans.map(s => s.textContent || '').join(' ');
         const phrase = spans.length > 1;
@@ -438,7 +491,7 @@ export class Overlay {
 
         this.cardWord.textContent = raw;
         this.cardForm.textContent = '';
-        this.cardHint.textContent = phrase ? '' : 'Shift-click another word to save a phrase';
+        this.cardHint.textContent = phrase ? '' : 'Drag across words to save a phrase';
         this.card.classList.add('open');
         // What gets saved: the meaning once it has arrived, never the
         // "Looking up…" placeholder.

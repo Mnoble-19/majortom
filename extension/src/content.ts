@@ -283,6 +283,7 @@ function mountOverlay() {
 
     overlay = new Overlay(video, settings, {
         isSaved: w => savedWords.has(w),
+        savedPhrases: () => [...savedWords].filter(w => w.includes(' ')),
         lookup: async w => {
             const sentence = best?.cues[currentIndex]?.text || '';
             // Keyed by sentence too: the whole point is the meaning in context.
