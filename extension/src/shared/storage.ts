@@ -3,7 +3,6 @@ import {DEFAULT_SETTINGS} from './config';
 
 const SETTINGS_KEY = 'mt_settings';
 const VOCAB_KEY = 'mt_vocab';
-const CACHE_KEY = 'mt_tcache';
 /** Translated videos to keep before evicting the least recently used. */
 const CACHE_LIMIT = 40;
 
@@ -31,8 +30,15 @@ export function onSettingsChanged(fn: (s: Settings) => void): void {
     });
 }
 
+/** A hostname as the site list stores it. */
+export function siteOf(host: string): string {
+    return host.replace(/^www\./, '');
+}
+
+/** A listed site covers its subdomains too, so ARD's player hosts come along. */
 export function isHostEnabled(s: Settings, host = location.hostname): boolean {
-    return s.enabled && !s.disabledHosts.includes(host.replace(/^www\./, ''));
+    const h = siteOf(host);
+    return s.enabledHosts.some(e => h === e || h.endsWith(`.${e}`));
 }
 
 /* ── Vocabulary ───────────────────────────────────────────────────────────── */
@@ -88,35 +94,46 @@ export async function updateWord(
 
 /* ── Translation cache ────────────────────────────────────────────────────── */
 
-interface CacheEntry {
-    at: number;
-    texts: string[]
+/**
+ * Translations are kept per video as sentence → translation, not as one array
+ * for one particular set of cues. So a better subtitle source turning up, a
+ * track that keeps growing, or a half-finished job resumed after a reload all
+ * reuse every sentence already done instead of starting over.
+ *
+ * Each video has its own storage key, so saving a batch rewrites that video
+ * alone; the index holds last-used times for eviction.
+ */
+const TC_PREFIX = 'mt_tc:';
+const TC_INDEX = 'mt_tcindex';
+
+export type SentenceCache = Record<string, string>;
+
+export async function getSentences(key: string): Promise<SentenceCache> {
+    const k = TC_PREFIX + key;
+    const r = await chrome.storage.local.get([k, TC_INDEX]);
+    const index: Record<string, number> = r[TC_INDEX] || {};
+    index[key] = Date.now();
+    await chrome.storage.local.set({[TC_INDEX]: index});
+    return r[k] || {};
 }
 
-export async function getCached(key: string): Promise<string[] | null> {
-    const r = await chrome.storage.local.get(CACHE_KEY);
-    const cache: Record<string, CacheEntry> = r[CACHE_KEY] || {};
-    const hit = cache[key];
-    if (!hit) return null;
-    hit.at = Date.now();
-    await chrome.storage.local.set({[CACHE_KEY]: cache});
-    return hit.texts;
-}
+export async function saveSentences(key: string, sentences: SentenceCache): Promise<void> {
+    const r = await chrome.storage.local.get(TC_INDEX);
+    const index: Record<string, number> = r[TC_INDEX] || {};
+    index[key] = Date.now();
 
-export async function setCached(key: string, texts: string[]): Promise<void> {
-    const r = await chrome.storage.local.get(CACHE_KEY);
-    const cache: Record<string, CacheEntry> = r[CACHE_KEY] || {};
-    cache[key] = {at: Date.now(), texts};
+    const keys = Object.keys(index);
+    const evicted = keys.length > CACHE_LIMIT
+        ? keys.sort((a, b) => index[a] - index[b]).slice(0, keys.length - CACHE_LIMIT)
+        : [];
+    for (const k of evicted) delete index[k];
 
-    const keys = Object.keys(cache);
-    if (keys.length > CACHE_LIMIT) {
-        keys.sort((a, b) => cache[a].at - cache[b].at)
-            .slice(0, keys.length - CACHE_LIMIT)
-            .forEach(k => delete cache[k]);
-    }
-    await chrome.storage.local.set({[CACHE_KEY]: cache});
+    await chrome.storage.local.set({[TC_PREFIX + key]: sentences, [TC_INDEX]: index});
+    if (evicted.length) await chrome.storage.local.remove(evicted.map(k => TC_PREFIX + k));
 }
 
 export async function clearCache(): Promise<void> {
-    await chrome.storage.local.remove(CACHE_KEY);
+    const all = await chrome.storage.local.get(null);
+    await chrome.storage.local.remove(
+        Object.keys(all).filter(k => k.startsWith(TC_PREFIX) || k === TC_INDEX || k === 'mt_tcache'));
 }

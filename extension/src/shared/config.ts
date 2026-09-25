@@ -7,11 +7,11 @@ declare const __MT_DEV__: boolean;
 export const DEV = typeof __MT_DEV__ !== 'undefined' ? __MT_DEV__ : false;
 
 export const DEFAULT_SETTINGS: Settings = {
-    enabled: true,
-    sourceLang: '',
+    enabledHosts: [],
+    sourceLang: 'DE',
     targetLang: 'EN-US',
-    provider: 'deepl',
-    deeplKey: '',
+    llmEndpoint: 'http://localhost:9931/v1',
+    llmModel: '',
     blurSecondary: false,
     autoPause: false,
     loopCue: false,
@@ -21,10 +21,9 @@ export const DEFAULT_SETTINGS: Settings = {
     // Low in the frame. The overlay lifts clear of the player's controls
     // whenever they show, which is only while the player is hovered.
     offsetPct: 9,
-    disabledHosts: [],
 };
 
-/** DeepL target languages. Source codes are derived by stripping the region. */
+/** Target languages. The model and YouTube only use the part before the dash. */
 export const TARGET_LANGS: Array<[string, string]> = [
     ['EN-US', 'English (US)'],
     ['EN-GB', 'English (UK)'],

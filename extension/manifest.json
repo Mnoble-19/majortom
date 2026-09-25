@@ -5,6 +5,8 @@
   "description": "Dual subtitles and click-to-save vocabulary on any video site.",
   "permissions": [
     "storage",
+    "scripting",
+    "unlimitedStorage",
     "nativeMessaging"
   ],
   "host_permissions": [
@@ -13,29 +15,6 @@
   "background": {
     "service_worker": "background.js"
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "injected.js"
-      ],
-      "world": "MAIN",
-      "run_at": "document_start",
-      "all_frames": true
-    },
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content.js"
-      ],
-      "run_at": "document_idle",
-      "all_frames": true
-    }
-  ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "MajorTom",

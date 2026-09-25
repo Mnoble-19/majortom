@@ -1,9 +1,9 @@
-import {Settings} from '../shared/types';
+import {Gloss, Settings} from '../shared/types';
 
 export interface OverlayHooks {
     isSaved(word: string): boolean;
 
-    lookup(word: string): Promise<string>;
+    lookup(word: string): Promise<Gloss | { error: string }>;
 
     saveWord(word: string, translation: string): Promise<void>;
 
@@ -98,6 +98,8 @@ const STYLE = `
 .card.open { display: block; }
 .card .top { display: flex; align-items: flex-start; gap: 10px; }
 .card .hw { flex: 1; font-size: 24px; font-weight: 800; line-height: 1.15; word-break: break-word; }
+.card .form { color: var(--card-dim); font-size: 13px; font-weight: 600; margin-top: 2px; }
+.card .form:empty { display: none; }
 .card .tr { color: var(--accent-text); font-size: 16px; font-weight: 600; min-height: 1.3em; margin: 4px 0 14px; line-height: 1.4; }
 .card .tr.dim { color: var(--card-dim); font-weight: 500; font-style: italic; }
 .card button { all: unset; cursor: pointer; text-align: center; font-weight: 700; }
@@ -138,6 +140,7 @@ export class Overlay {
     private statusEl: HTMLElement;
     private card: HTMLElement;
     private cardWord!: HTMLElement;
+    private cardForm!: HTMLElement;
     private cardTr!: HTMLElement;
     private cardSave!: HTMLButtonElement;
     private bar: HTMLElement;
@@ -341,6 +344,7 @@ export class Overlay {
     private buildCard(): HTMLElement {
         const card = el('div', 'card');
         this.cardWord = el('div', 'hw');
+        this.cardForm = el('div', 'form');
         this.cardTr = el('div', 'tr');
         this.cardSave = el('button', 'save') as HTMLButtonElement;
 
@@ -351,7 +355,7 @@ export class Overlay {
 
         const top = el('div', 'top');
         top.append(this.cardWord, close);
-        card.append(top, this.cardTr, this.cardSave);
+        card.append(top, this.cardForm, this.cardTr, this.cardSave);
         return card;
     }
 
@@ -362,7 +366,11 @@ export class Overlay {
         span.classList.add('active');
 
         this.cardWord.textContent = raw;
+        this.cardForm.textContent = '';
         this.card.classList.add('open');
+        // What gets saved: the meaning once it has arrived, never the
+        // "Looking up…" placeholder.
+        let meaning = '';
 
         const saved = this.hooks.isSaved(word);
         this.setSaveButton(saved);
@@ -371,7 +379,7 @@ export class Overlay {
                 await this.hooks.removeWord(word);
                 this.setSaveButton(false);
             } else {
-                await this.hooks.saveWord(word, this.cardTr.textContent || '');
+                await this.hooks.saveWord(word, meaning);
                 this.setSaveButton(true);
             }
             this.refreshSaved();
@@ -379,11 +387,18 @@ export class Overlay {
 
         this.cardTr.textContent = 'Looking up…';
         this.cardTr.classList.add('dim');
-        const tr = await this.hooks.lookup(word);
+        const out = await this.hooks.lookup(word);
         // The user may have clicked elsewhere while the lookup was in flight.
         if (this.activeWord !== span) return;
-        this.cardTr.textContent = tr || 'No translation (check your DeepL key in settings)';
-        this.cardTr.classList.toggle('dim', !tr);
+        if ('error' in out) {
+            this.cardTr.textContent = `No translation: ${out.error}`;
+            return;
+        }
+        meaning = out.meaning;
+        // `holt` → `rausholen`: only worth a line when it adds something.
+        if (out.form.toLowerCase() !== raw.toLowerCase()) this.cardForm.textContent = out.form;
+        this.cardTr.textContent = out.meaning;
+        this.cardTr.classList.remove('dim');
     }
 
     private setSaveButton(saved: boolean): void {

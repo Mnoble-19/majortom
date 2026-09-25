@@ -24,16 +24,17 @@ export interface MediaInfo {
     key: string;
 }
 
-export type ProviderId = 'none' | 'deepl' | 'yt-tlang';
-
 export interface Settings {
-    enabled: boolean;
+    /** Sites the extension runs on, without `www.`. Nothing runs anywhere else. */
+    enabledHosts: string[];
     /** Language of the video's own subtitles. '' = auto/whatever the site gives us. */
     sourceLang: string;
-    /** Language we translate into (DeepL target code, e.g. 'EN-US'). */
+    /** Language we translate into, e.g. 'EN-US'. Only the part before the dash matters. */
     targetLang: string;
-    provider: ProviderId;
-    deeplKey: string;
+    /** OpenAI-compatible base URL of the local model, e.g. llama-server's `/v1`. */
+    llmEndpoint: string;
+    /** '' uses the first model the endpoint lists. */
+    llmModel: string;
     /** Hide the translation line until hovered — forces you to try first. */
     blurSecondary: boolean;
     /** Pause automatically at the end of every cue. */
@@ -45,8 +46,6 @@ export interface Settings {
     fontScale: number;
     /** Vertical offset from the bottom of the player, in % of player height. */
     offsetPct: number;
-    /** Hosts where the overlay is explicitly turned off. */
-    disabledHosts: string[];
 }
 
 export interface VocabEntry {
@@ -68,13 +67,25 @@ export interface VocabEntry {
 export type PageMessage =
     | { src: 'majortom'; kind: 'track-cues'; trackId: string; lang: string; label: string; cues: Cue[] }
     | { src: 'majortom'; kind: 'sub-file'; url: string; body: string }
-    | { src: 'majortom'; kind: 'media-meta'; title: string };
+    | { src: 'majortom'; kind: 'media-meta'; title: string }
+    /** New YouTube track data (or its token) is on the page attribute. */
+    | { src: 'majortom'; kind: 'yt-update'; v: string };
 
 /* ── Messages: content/popup → background service worker ───────────────────── */
 
 export type BgRequest =
     | { type: 'FETCH'; url: string; init?: { headers?: Record<string, string> } }
-    | { type: 'TRANSLATE'; texts: string[]; source: string; target: string; key: string };
+    | { type: 'SYNC_SCRIPTS' }
+    | { type: 'LLM_SUBS'; lines: string[]; context: string[]; source: string; target: string }
+    | { type: 'LLM_GLOSS'; word: string; sentence: string; source: string; target: string };
+
+/** A clicked word, as the model explains it. */
+export interface Gloss {
+    /** The form you would look up: `rausholen` for `holt … raus`. */
+    form: string;
+    /** What it means in this sentence. */
+    meaning: string;
+}
 
 export interface BgResponse<T = unknown> {
     ok: boolean;
