@@ -37,6 +37,8 @@ export interface Settings {
     llmModel: string;
     /** Hide the translation line until hovered — forces you to try first. */
     blurSecondary: boolean;
+    /** Pause while the pointer is over the subtitles, resume when it leaves. */
+    hoverPause: boolean;
     /** Pause automatically at the end of every cue. */
     autoPause: boolean;
     /** Repeat the current line until you move on — for shadowing practice. */

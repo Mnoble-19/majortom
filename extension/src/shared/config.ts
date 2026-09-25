@@ -13,14 +13,16 @@ export const DEFAULT_SETTINGS: Settings = {
     llmEndpoint: 'http://localhost:9931/v1',
     llmModel: '',
     blurSecondary: false,
+    hoverPause: true,
     autoPause: false,
     loopCue: false,
     showSecondary: true,
     hideNativeCaptions: true,
     fontScale: 1,
-    // Low in the frame. The overlay lifts clear of the player's controls
-    // whenever they show, which is only while the player is hovered.
-    offsetPct: 9,
+    // Where the site's own captions sit, since ours replace them. The overlay
+    // lifts clear of the player's controls whenever they show, which is only
+    // while the player is hovered.
+    offsetPct: 4,
 };
 
 /** Target languages. The model and YouTube only use the part before the dash. */
