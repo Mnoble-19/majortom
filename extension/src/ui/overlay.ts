@@ -141,6 +141,9 @@ const GLYPHS = {
  *  like hovering and not waiting. */
 const HOVER_LOOKUP_MS = 450;
 
+/** Two two-finger taps closer together than this are one double tap. */
+const DOUBLE_TAP_MS = 400;
+
 /** Word-ish runs, keeping apostrophes/hyphens inside words. Unicode-aware. */
 const WORD_RE = /[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;
 
@@ -155,7 +158,7 @@ export class Overlay {
     private cardWord!: HTMLElement;
     private cardForm!: HTMLElement;
     private cardTr!: HTMLElement;
-    private cardSave!: HTMLButtonElement;
+    // private cardSave!: HTMLButtonElement;
     private bar: HTMLElement;
     private barToggles!: {
         blur: HTMLButtonElement;
@@ -484,6 +487,12 @@ export class Overlay {
             span.addEventListener('mousedown', e => this.onWordDown(e, span));
             span.addEventListener('mouseenter', () => this.onWordOver(span));
             span.addEventListener('mouseleave', () => clearTimeout(this.lookupTimer));
+            // A two-finger tap on a trackpad arrives as a right-click.
+            span.addEventListener('contextmenu', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                void this.onSaveTap(span);
+            });
             // The card opens on mouseup; the click only has to stay away from
             // the player, which would otherwise pause or play the video.
             span.addEventListener('click', e => e.stopPropagation());
@@ -501,7 +510,7 @@ export class Overlay {
         this.cardForm = el('div', 'form');
         this.cardTr = el('div', 'tr');
         this.cardHint = el('div', 'hint');
-        this.cardSave = el('button', 'save') as HTMLButtonElement;
+        // this.cardSave = el('button', 'save') as HTMLButtonElement;
 
         const close = el('button', 'close') as HTMLButtonElement;
         close.setAttribute('aria-label', 'Close');
@@ -510,7 +519,9 @@ export class Overlay {
 
         const top = el('div', 'top');
         top.append(this.cardWord, close);
-        card.append(top, this.cardForm, this.cardTr, this.cardHint, this.cardSave);
+        // Saving is a two-finger tap now; the button is kept for if it comes back.
+        // card.append(top, this.cardForm, this.cardTr, this.cardHint, this.cardSave);
+        card.append(top, this.cardForm, this.cardTr, this.cardHint);
         return card;
     }
 
@@ -526,23 +537,22 @@ export class Overlay {
 
         this.cardWord.textContent = raw;
         this.cardForm.textContent = '';
-        this.cardHint.textContent = phrase ? '' : 'Drag across words to save a phrase';
+        this.cardHint.textContent = phrase
+            ? 'Two-finger tap to save this phrase'
+            : 'Two-finger tap to save · twice for the whole line';
         this.card.classList.add('open');
-        // What gets saved: the meaning once it has arrived, never the
-        // "Looking up…" placeholder.
-        let meaning = '';
 
-        this.setSaveButton(this.hooks.isSaved(text), phrase);
-        this.cardSave.onclick = async () => {
-            if (this.hooks.isSaved(text)) {
-                await this.hooks.removeWord(text);
-                this.setSaveButton(false, phrase);
-            } else {
-                await this.hooks.saveWord(text, meaning);
-                this.setSaveButton(true, phrase);
-            }
-            this.refreshSaved();
-        };
+        // this.setSaveButton(this.hooks.isSaved(text), phrase);
+        // this.cardSave.onclick = async () => {
+        //     if (this.hooks.isSaved(text)) {
+        //         await this.hooks.removeWord(text);
+        //         this.setSaveButton(false, phrase);
+        //     } else {
+        //         await this.hooks.saveWord(text, meaning);
+        //         this.setSaveButton(true, phrase);
+        //     }
+        //     this.refreshSaved();
+        // };
 
         this.cardTr.textContent = 'Looking up…';
         this.cardTr.classList.add('dim');
@@ -553,19 +563,75 @@ export class Overlay {
             this.cardTr.textContent = `No translation: ${out.error}`;
             return;
         }
-        meaning = out.meaning;
         // Saved while this was still out, or saved blank before: fill it in.
-        if (this.hooks.isSaved(text)) void this.hooks.setMeaning(text, meaning);
+        if (this.hooks.isSaved(text)) void this.hooks.setMeaning(text, out.meaning);
         // `holt` → `rausholen`: only worth a line when it adds something.
         if (out.form.toLowerCase() !== raw.toLowerCase()) this.cardForm.textContent = out.form;
         this.cardTr.textContent = out.meaning;
         this.cardTr.classList.remove('dim');
     }
 
-    private setSaveButton(saved: boolean, phrase: boolean): void {
-        this.cardSave.textContent = saved ? 'Saved — click to remove' : phrase ? 'Save phrase' : 'Save word';
-        this.cardSave.classList.toggle('on', saved);
+    /* ── Saving by tapping ───────────────────────────────────────────────────── */
+
+    /** The last two-finger tap, so a second one can turn it into the line. */
+    private lastTap: { at: number; text: string; added: boolean } | null = null;
+
+    /**
+     * One two-finger tap saves the word under the pointer — or the selected
+     * phrase, if you tap inside one — and a second tap removes what is saved.
+     * Two taps in quick succession take back the first and save the whole line
+     * as a phrase. The word is saved straight away rather than after waiting to
+     * see whether a second tap follows.
+     */
+    private async onSaveTap(span: HTMLElement): Promise<void> {
+        const now = performance.now();
+        const first = this.lastTap;
+        this.lastTap = null;
+
+        if (first && now - first.at < DOUBLE_TAP_MS) {
+            // Undo the first tap, then take the whole line.
+            if (first.added) await this.hooks.removeWord(first.text);
+            else await this.save(first.text);
+            const line = Array.from(this.primaryEl.querySelectorAll<HTMLElement>('.w'))
+                .map(s => norm(s.textContent || '')).filter(Boolean).join(' ');
+            if (line) await this.toggleSaved(line);
+            return;
+        }
+
+        const inSelection = this.activeWords.length > 1 && this.activeWords.includes(span);
+        const text = inSelection
+            ? this.activeWords.map(s => norm(s.textContent || '')).join(' ')
+            : norm(span.textContent || '');
+        if (!text) return;
+        const added = await this.toggleSaved(text);
+        this.lastTap = {at: now, text, added};
     }
+
+    /** Saves or removes, says which, and returns whether it was saved. */
+    private async toggleSaved(text: string): Promise<boolean> {
+        if (this.hooks.isSaved(text)) {
+            await this.hooks.removeWord(text);
+            this.refreshSaved();
+            this.setStatus(`Removed “${text}”`, 1600);
+            return false;
+        }
+        await this.save(text);
+        this.setStatus(`Saved “${text}”`, 1600);
+        return true;
+    }
+
+    /** Saves at once, then fills in the meaning when the lookup lands. */
+    private async save(text: string): Promise<void> {
+        await this.hooks.saveWord(text, '');
+        this.refreshSaved();
+        const out = await this.hooks.lookup(text);
+        if (!('error' in out) && this.hooks.isSaved(text)) void this.hooks.setMeaning(text, out.meaning);
+    }
+
+    // private setSaveButton(saved: boolean, phrase: boolean): void {
+    //     this.cardSave.textContent = saved ? 'Saved — click to remove' : phrase ? 'Save phrase' : 'Save word';
+    //     this.cardSave.classList.toggle('on', saved);
+    // }
 
     private closeCard(): void {
         const wasOpen = this.card.classList.contains('open');
