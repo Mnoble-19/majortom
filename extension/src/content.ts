@@ -447,50 +447,29 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 /**
- * Bracket keys are used because every video site already claims the letters and
- * arrows, and we should never fight the player for its own shortcuts.
+ * The top-left row of letters, matched by physical key rather than by the
+ * letter it types, so they stay under the left hand on any layout (on QWERTZ,
+ * "Y" is the key marked Z). Ordered like the control bar.
  */
+const KEYS: Record<string, () => void> = {
+    KeyQ: () => seekCue(-1),
+    KeyW: () => replayCue(),
+    KeyE: () => seekCue(1),
+    KeyR: () => void setSettings({blurSecondary: !settings.blurSecondary}),
+    KeyT: () => void setSettings({autoPause: !settings.autoPause}),
+    KeyY: () => void setSettings({loopCue: !settings.loopCue}),
+};
+
 function installKeyboard() {
     document.addEventListener('keydown', e => {
         if (!overlay || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
-
-        switch (e.key) {
-            case '[':
-                e.preventDefault();
-                e.stopPropagation();
-                seekCue(-1);
-                break;
-            case ']':
-                e.preventDefault();
-                e.stopPropagation();
-                seekCue(1);
-                break;
-            case '\\':
-                e.preventDefault();
-                e.stopPropagation();
-                replayCue();
-                break;
-            case 'p':
-            case 'P':
-                e.preventDefault();
-                e.stopPropagation();
-                void setSettings({autoPause: !settings.autoPause});
-                break;
-            case 'h':
-            case 'H':
-                e.preventDefault();
-                e.stopPropagation();
-                void setSettings({blurSecondary: !settings.blurSecondary});
-                break;
-            case 'l':
-            case 'L':
-                e.preventDefault();
-                e.stopPropagation();
-                void setSettings({loopCue: !settings.loopCue});
-                break;
-            default:
-                break;
-        }
+        const action = KEYS[e.code];
+        if (!action) return;
+        // Ours while subtitles are showing, even where the player has its own
+        // use for the key.
+        e.preventDefault();
+        e.stopPropagation();
+        action();
     }, true);
 }
 

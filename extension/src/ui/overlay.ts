@@ -286,6 +286,7 @@ export class Overlay {
         this.settings = s;
         this.secondaryEl.classList.toggle('blurred', s.blurSecondary);
         this.secondaryEl.style.display = s.showSecondary ? '' : 'none';
+        this.bar.style.display = s.showToolbar ? '' : 'none';
         this.barToggles?.blur.setAttribute('aria-pressed', String(s.blurSecondary));
         this.barToggles?.pause.setAttribute('aria-pressed', String(s.autoPause));
         this.barToggles?.loop.setAttribute('aria-pressed', String(s.loopCue));
@@ -595,18 +596,18 @@ export class Overlay {
             return b;
         };
 
-        mk(icon(GLYPHS.previous), 'Previous line  [', () => this.hooks.seekToCue(-1));
-        mk(icon(GLYPHS.replay), 'Replay this line  \\', () => this.hooks.replayCue());
-        mk(icon(GLYPHS.next), 'Next line  ]', () => this.hooks.seekToCue(1));
+        mk(icon(GLYPHS.previous), 'Previous line  Q', () => this.hooks.seekToCue(-1));
+        mk(icon(GLYPHS.replay), 'Replay this line  W', () => this.hooks.replayCue());
+        mk(icon(GLYPHS.next), 'Next line  E', () => this.hooks.seekToCue(1));
         bar.appendChild(el('div', 'sep'));
 
-        const blur = mk(icon(GLYPHS.eye), 'Blur the translation until hovered  H', () => {
+        const blur = mk(icon(GLYPHS.eye), 'Blur the translation until hovered  R', () => {
             this.hooks.patchSettings({blurSecondary: !this.settings.blurSecondary});
         });
-        const pause = mk(icon(GLYPHS.pause, {stroke: 3}), 'Pause after each line  P', () => {
+        const pause = mk(icon(GLYPHS.pause, {stroke: 3}), 'Pause after each line  T', () => {
             this.hooks.patchSettings({autoPause: !this.settings.autoPause});
         });
-        const loop = mk(icon(GLYPHS.loop), 'Loop this line  L', () => {
+        const loop = mk(icon(GLYPHS.loop), 'Loop this line  Y', () => {
             this.hooks.patchSettings({loopCue: !this.settings.loopCue});
         });
 

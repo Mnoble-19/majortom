@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: Settings = {
     llmModel: '',
     blurSecondary: false,
     hoverPause: true,
+    showToolbar: false,
     autoPause: false,
     loopCue: false,
     showSecondary: true,

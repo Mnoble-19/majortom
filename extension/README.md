@@ -70,16 +70,20 @@ under **Video is in** is left alone.
 
 | Key | Action                                         |
 |-----|------------------------------------------------|
-| `[` | Previous subtitle                              |
-| `]` | Next subtitle                                  |
-| `\` | Replay the current subtitle                    |
-| `P` | Toggle auto-pause at the end of each line      |
-| `L` | Loop the current line (shadowing practice)     |
-| `H` | Toggle the blurred translation ("guess first") |
+| `Q` | Previous subtitle                              |
+| `W` | Replay the current subtitle                    |
+| `E` | Next subtitle                                  |
+| `R` | Toggle the blurred translation ("guess first") |
+| `T` | Toggle auto-pause at the end of each line      |
+| `Y` | Loop the current line (shadowing practice)     |
 
-Bracket keys are used deliberately: every video site already claims the letters
-and arrow keys for its own player, and the extension should not fight it. All
+The top-left row, matched by physical key, so they stay under the left hand on
+any layout (on a German keyboard, `Y` is the key marked Z). While subtitles are
+showing they take precedence over the player's own use of those keys. All
 shortcuts are ignored while you are typing in a text box.
+
+The control bar above the subtitles is off by default; turn it on in the popup
+under **While watching**.
 
 ## How subtitles are found
 

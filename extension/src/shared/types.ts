@@ -39,6 +39,8 @@ export interface Settings {
     blurSecondary: boolean;
     /** Pause while the pointer is over the subtitles, resume when it leaves. */
     hoverPause: boolean;
+    /** The bar of line controls above the subtitles. The keys work without it. */
+    showToolbar: boolean;
     /** Pause automatically at the end of every cue. */
     autoPause: boolean;
     /** Repeat the current line until you move on — for shadowing practice. */
