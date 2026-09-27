@@ -5,8 +5,8 @@ site, not a hardcoded list of three.
 
 The original subtitle line stays on top, a translation sits underneath, and every
 word in the original can be looked up by resting on it or clicking it. A
-two-finger tap on a word saves it with the sentence it came from; two quick
-two-finger taps save the whole line as a phrase. (A two-finger tap reaches the
+two-finger tap on a word saves it with the sentence it came from; with Shift
+held, it saves the whole line as a phrase. (A two-finger tap reaches the
 page as a right-click, so a right-click does the same with a mouse.)
 
 ## Install

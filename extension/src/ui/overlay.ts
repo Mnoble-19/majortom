@@ -141,9 +141,6 @@ const GLYPHS = {
  *  like hovering and not waiting. */
 const HOVER_LOOKUP_MS = 450;
 
-/** Two two-finger taps closer together than this are one double tap. */
-const DOUBLE_TAP_MS = 400;
-
 /** Word-ish runs, keeping apostrophes/hyphens inside words. Unicode-aware. */
 const WORD_RE = /[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;
 
@@ -491,7 +488,7 @@ export class Overlay {
             span.addEventListener('contextmenu', e => {
                 e.preventDefault();
                 e.stopPropagation();
-                void this.onSaveTap(span);
+                void this.onSaveTap(span, e.shiftKey);
             });
             // The card opens on mouseup; the click only has to stay away from
             // the player, which would otherwise pause or play the video.
@@ -539,7 +536,7 @@ export class Overlay {
         this.cardForm.textContent = '';
         this.cardHint.textContent = phrase
             ? 'Two-finger tap to save this phrase'
-            : 'Two-finger tap to save · twice for the whole line';
+            : 'Two-finger tap to save · with Shift for the whole line';
         this.card.classList.add('open');
 
         // this.setSaveButton(this.hooks.isSaved(text), phrase);
@@ -573,38 +570,18 @@ export class Overlay {
 
     /* ── Saving by tapping ───────────────────────────────────────────────────── */
 
-    /** The last two-finger tap, so a second one can turn it into the line. */
-    private lastTap: { at: number; text: string; added: boolean } | null = null;
-
     /**
-     * One two-finger tap saves the word under the pointer — or the selected
-     * phrase, if you tap inside one — and a second tap removes what is saved.
-     * Two taps in quick succession take back the first and save the whole line
-     * as a phrase. The word is saved straight away rather than after waiting to
-     * see whether a second tap follows.
+     * A two-finger tap saves the word under the pointer — or the selected
+     * phrase, if you tap inside one — and removes it if it is already saved.
+     * With Shift held, it saves the whole line as a phrase.
      */
-    private async onSaveTap(span: HTMLElement): Promise<void> {
-        const now = performance.now();
-        const first = this.lastTap;
-        this.lastTap = null;
-
-        if (first && now - first.at < DOUBLE_TAP_MS) {
-            // Undo the first tap, then take the whole line.
-            if (first.added) await this.hooks.removeWord(first.text);
-            else await this.save(first.text);
-            const line = Array.from(this.primaryEl.querySelectorAll<HTMLElement>('.w'))
-                .map(s => norm(s.textContent || '')).filter(Boolean).join(' ');
-            if (line) await this.toggleSaved(line);
-            return;
-        }
-
+    private async onSaveTap(span: HTMLElement, wholeLine: boolean): Promise<void> {
         const inSelection = this.activeWords.length > 1 && this.activeWords.includes(span);
-        const text = inSelection
-            ? this.activeWords.map(s => norm(s.textContent || '')).join(' ')
-            : norm(span.textContent || '');
-        if (!text) return;
-        const added = await this.toggleSaved(text);
-        this.lastTap = {at: now, text, added};
+        const spans = wholeLine ? Array.from(this.primaryEl.querySelectorAll<HTMLElement>('.w'))
+            : inSelection ? this.activeWords
+            : [span];
+        const text = spans.map(s => norm(s.textContent || '')).filter(Boolean).join(' ');
+        if (text) await this.toggleSaved(text);
     }
 
     /** Saves or removes, says which, and returns whether it was saved. */
