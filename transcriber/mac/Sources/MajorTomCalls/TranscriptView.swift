@@ -7,6 +7,9 @@ import SwiftUI
 /// clicked to save it.
 struct TranscriptView: View {
     let model: SessionModel
+    /// Follow new lines only while at the bottom; scrolling up to reread
+    /// stops it until you jump back.
+    @State private var following = true
 
     var body: some View {
         ScrollViewReader { scroll in
@@ -55,12 +58,23 @@ struct TranscriptView: View {
                 }
                 .padding(24)
             }
+            .trackingBottom($following)
             .onChange(of: model.lines.count) { _, _ in
+                guard following else { return }
                 withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
             }
             .onChange(of: model.volatile) { _, _ in
+                guard following else { return }
                 scroll.scrollTo("bottom", anchor: .bottom)
             }
+            .overlay(alignment: .bottom) {
+                if !following {
+                    JumpToLatestButton {
+                        withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
+                    }
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: following)
         }
     }
 
