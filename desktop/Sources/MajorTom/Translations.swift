@@ -50,24 +50,22 @@ final class Translations: ObservableObject {
         outcome = nil
 
         Task {
-            let settings = await Self.modelSettings()
-            let translator = Translator(settings: settings ?? Settings.llm, apiKey: Settings.apiKey)
             var filled = 0
+            var lastError: String?
             for item in pending {
-                var best: Gloss?
-                for await gloss in translator.glosses(word: item.text, sentence: item.context) {
-                    best = gloss
+                do {
+                    let gloss = try await check(item)
+                    store.applyTranslation(gloss.meaning, sentence: gloss.sentence,
+                                           alternatives: gloss.alternatives, to: item)
+                    filled += 1
+                } catch {
+                    lastError = "\(error)"
                 }
                 done += 1
-                guard let best else { continue }
-                store.applyTranslation(best.meaning, sentence: best.sentence,
-                                       alternatives: best.alternatives, to: item)
-                filled += 1
             }
             running = false
             let result: Outcome = filled > 0 ? .translated(filled)
-                : settings != nil ? .failed("The model could not be reached — is it running?")
-                : .unavailable
+                : lastError.map { .failed("Translation failed: \($0)") } ?? .unavailable
             outcome = result
             // A success fades on its own; a failure stays until it is fixed.
             if !result.isFailure {

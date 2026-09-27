@@ -143,6 +143,9 @@ private struct LiveView: View {
     let pending: PendingWords
     @State private var justSaved: String?
     @State private var toastTask: Task<Void, Never>?
+    /// Follow new lines only while at the bottom; scrolling up to reread
+    /// stops it until you jump back.
+    @State private var following = true
     /// Set by a long press: the first word of a phrase, waiting for a tap on
     /// its last word.
     @State private var phraseStart: (line: Line.ID, index: Int)?
@@ -189,9 +192,23 @@ private struct LiveView: View {
                 }
                 .padding(16)
             }
+            .trackingBottom($following)
             .onChange(of: session.lines.count) { _, _ in
+                guard following else { return }
                 withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
             }
+            .onChange(of: session.volatile) { _, _ in
+                guard following else { return }
+                scroll.scrollTo("bottom", anchor: .bottom)
+            }
+            .overlay(alignment: .bottom) {
+                if !following {
+                    JumpToLatestButton {
+                        withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
+                    }
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: following)
         }
         .overlay(alignment: .bottom) { toast }
         .safeAreaInset(edge: .bottom) { controls }
