@@ -136,6 +136,11 @@ const GLYPHS = {
     close: 'M6 6l12 12M18 6 6 18',
 };
 
+/** How long the pointer rests on a word before it is looked up: long enough
+ *  that moving across the line does not fire it, short enough to feel
+ *  like hovering and not waiting. */
+const HOVER_LOOKUP_MS = 450;
+
 /** Word-ish runs, keeping apostrophes/hyphens inside words. Unicode-aware. */
 const WORD_RE = /[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;
 
@@ -169,6 +174,11 @@ export class Overlay {
     /** True while the video is paused because you are reading, not by you. */
     private pausedByHover = false;
     private hoverLeaveTimer = 0;
+    /** Waiting to look up the word under the pointer. */
+    private lookupTimer = 0;
+    /** The open card came from resting on a word, not a click, so another
+     *  word may replace it and leaving the subtitles closes it. */
+    private cardByHover = false;
     private resizeObs: ResizeObserver | null = null;
     private parent: HTMLElement | null = null;
     /** Player controls appear on hover, so lift out of their way while they do. */
@@ -227,6 +237,7 @@ export class Overlay {
         this.resizeObs = null;
         this.video.removeEventListener('play', this.onPlay);
         clearTimeout(this.hoverLeaveTimer);
+        clearTimeout(this.lookupTimer);
         this.host.remove();
     }
 
@@ -306,7 +317,10 @@ export class Overlay {
         // A beat of grace, so crossing the gap between the two lines, or from
         // a line up to the card, does not resume and pause again.
         clearTimeout(this.hoverLeaveTimer);
-        this.hoverLeaveTimer = self.setTimeout(() => this.maybeResume(), 250);
+        this.hoverLeaveTimer = self.setTimeout(() => {
+            if (this.hovering === 0 && this.cardByHover) this.closeCard();
+            else this.maybeResume();
+        }, 250);
     };
 
     private onPlay = () => {
@@ -358,6 +372,7 @@ export class Overlay {
         // from treating it as a click on the video.
         e.preventDefault();
         e.stopPropagation();
+        clearTimeout(this.lookupTimer);
         if (e.shiftKey && this.activeWords.length) {
             void this.openCard(this.wordsBetween(this.activeWords[0], span));
             return;
@@ -368,10 +383,24 @@ export class Overlay {
     };
 
     private onWordOver = (span: HTMLElement) => {
-        if (!this.dragFrom || span === this.dragTo) return;
+        if (!this.dragFrom) {
+            clearTimeout(this.lookupTimer);
+            this.lookupTimer = self.setTimeout(() => this.lookUpHovered(span), HOVER_LOOKUP_MS);
+            return;
+        }
+        if (span === this.dragTo) return;
         this.dragTo = span;
         this.previewDrag();
     };
+
+    /** Resting on a word looks it up, unless a clicked card is open. */
+    private lookUpHovered(span: HTMLElement): void {
+        if (this.dragFrom || !span.isConnected) return;
+        const open = this.card.classList.contains('open');
+        if (open && !this.cardByHover) return;
+        if (open && this.activeWords.length === 1 && this.activeWords[0] === span) return;
+        void this.openCard([span], true);
+    }
 
     private previewDrag(): void {
         this.primaryEl.querySelectorAll('.w.selecting').forEach(n => n.classList.remove('selecting'));
@@ -453,6 +482,7 @@ export class Overlay {
             span.textContent = m[0];
             span.addEventListener('mousedown', e => this.onWordDown(e, span));
             span.addEventListener('mouseenter', () => this.onWordOver(span));
+            span.addEventListener('mouseleave', () => clearTimeout(this.lookupTimer));
             // The card opens on mouseup; the click only has to stay away from
             // the player, which would otherwise pause or play the video.
             span.addEventListener('click', e => e.stopPropagation());
@@ -483,7 +513,8 @@ export class Overlay {
         return card;
     }
 
-    private async openCard(spans: HTMLElement[]): Promise<void> {
+    private async openCard(spans: HTMLElement[], byHover = false): Promise<void> {
+        this.cardByHover = byHover;
         const raw = spans.map(s => s.textContent || '').join(' ');
         const phrase = spans.length > 1;
         const text = phrase ? spans.map(s => norm(s.textContent || '')).join(' ') : norm(raw);
@@ -538,6 +569,8 @@ export class Overlay {
     private closeCard(): void {
         const wasOpen = this.card.classList.contains('open');
         this.card.classList.remove('open');
+        this.cardByHover = false;
+        clearTimeout(this.lookupTimer);
         this.activeWords.forEach(s => s.classList.remove('active'));
         this.activeWords = [];
         // Closed with the pointer already away from the subtitles: carry on.
