@@ -209,9 +209,7 @@ public struct ModelTranslator: Sendable {
         var body: [String: Any] = [
             "model": settings.model,
             "temperature": 0.2,
-            // Generous, because a reasoning model spends most of this thinking
-            // and a low ceiling truncates it before it ever answers.
-            "max_tokens": 900,
+            "max_tokens": settings.maxTokens,
             "messages": [
                 ["role": "system", "content": Self.systemPrompt],
                 ["role": "user", "content": Self.userPrompt(word: word, sentence: sentence, context: context)]
@@ -248,8 +246,7 @@ public struct ModelTranslator: Sendable {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        // A cold llama.cpp has to load the model before it answers at all.
-        request.timeoutInterval = 180
+        request.timeoutInterval = settings.timeout
         return request
     }
 

@@ -13,6 +13,33 @@ public struct LLMSettings: Codable, Equatable, Sendable {
     /// in the background and nobody is waiting on it.
     public var skipReasoning: Bool
     public var enabled: Bool
+    /// Most tokens one reply may use, thinking included. A thinking model
+    /// needs room: Gemma 4 26B used up to ~1,500 on one phrase, and at 900 it
+    /// was cut off before answering.
+    public var maxTokens: Int = 8192
+    /// How long to wait for one reply. A cold server loads the model first,
+    /// and thinking at ~20 tokens a second can run to minutes.
+    public var timeout: Double = 600
+
+    public init(endpoint: String, model: String, skipReasoning: Bool, enabled: Bool) {
+        self.endpoint = endpoint
+        self.model = model
+        self.skipReasoning = skipReasoning
+        self.enabled = enabled
+    }
+
+    /// Tolerates settings saved before a field existed, so adding one never
+    /// throws away the rest.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            endpoint: try c.decodeIfPresent(String.self, forKey: .endpoint) ?? Self.empty.endpoint,
+            model: try c.decodeIfPresent(String.self, forKey: .model) ?? "",
+            skipReasoning: try c.decodeIfPresent(Bool.self, forKey: .skipReasoning) ?? false,
+            enabled: try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true)
+        maxTokens = try c.decodeIfPresent(Int.self, forKey: .maxTokens) ?? maxTokens
+        timeout = try c.decodeIfPresent(Double.self, forKey: .timeout) ?? timeout
+    }
 
     public static let empty = LLMSettings(
         endpoint: "http://localhost:9931/v1",

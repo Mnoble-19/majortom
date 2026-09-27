@@ -61,6 +61,11 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
 
                 Toggle("Use the model at all", isOn: $settings.enabled)
+
+                TextField("Reply budget (tokens)", value: $settings.maxTokens, format: .number)
+                TextField("Timeout (seconds)", value: $settings.timeout, format: .number)
+                Text("The budget covers thinking too. If words come back empty, raise it.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section {
