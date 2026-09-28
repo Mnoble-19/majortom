@@ -211,49 +211,90 @@ END AFFECT
 ; The highlighter's stroke goes to highlightWithLine, which draws the highlight
 ; and hands no text back. The selection tool's goes to selectWithLine, which
 ; reports the glyphs under it -- that is what fills the menu above. So after a
-; highlight snapped to text, run the selection lookup on the same stroke and
-; open the menu with what it finds.
+; highlight snapped to text, run the selection lookup on the same stroke.
+;
+; A quote often runs over several lines, and each line is its own stroke. Lines
+; are gathered into one selection, and the menu waits for the pen to settle
+; before opening, so the quote is translated whole rather than line by line.
 ;
 ; Only listeners are added; no function reMarkable wrote is replaced. Their own
 ; onAreaSelected still runs and, seeing the highlighter rather than the
-; selection tool, closes any glyph selection -- so the menu is reopened with
-; Qt.callLater, after every handler for the event has had its turn.
+; selection tool, closes the glyph selection -- which is why the menu is opened
+; from a timer, after every handler for the stroke has had its turn.
 
 AFFECT /qml/device/view/documentview/DeviceSceneView.qml
     TRAVERSE FocusScope#root
         LOCATE AFTER ALL
         INSERT {
-            property bool mtFromHighlight: false
-            property var mtAreas: null
-            property string mtText: ""
+            // Set while a highlighter lookup is out, so an ordinary selection
+            // with the selection tool is left to reMarkable's own handling.
+            property bool mtLookupPending: false
+            property var mtAreas: []
+            property var mtTexts: []
+            property double mtLastLineAt: 0
 
-            function mtOpenFromHighlight() {
-                if (!root.mtFromHighlight) {
-                    return;
+            function mtAddLine(areas, text) {
+                const now = Date.now();
+                // A line soon after the last one continues the same quote;
+                // anything later starts a new one.
+                if (now - root.mtLastLineAt > 3000) {
+                    root.mtForget();
                 }
-                root.mtFromHighlight = false;
-                mtHighlightTimeout.stop();
-                if (!root.mtText) {
+                root.mtLastLineAt = now;
+
+                // Going over a line twice should not repeat it.
+                if (text && root.mtTexts[root.mtTexts.length - 1] !== text) {
+                    const all = root.mtAreas.slice();
+                    for (let i = 0; i < areas.length; i++) {
+                        all.push(areas[i]);
+                    }
+                    root.mtAreas = all;
+                    root.mtTexts = root.mtTexts.concat([text]);
+                }
+                mtSettle.restart();
+            }
+
+            function mtShow() {
+                if (!root.mtTexts.length) {
                     return;
                 }
                 glyphSelectionRoot.active = true;
-                root.glyphSelection.setSelection(root.mtAreas, root.mtText);
+                // Joined on newlines, which the menu's clean-up turns into
+                // spaces -- and back into one word where a line ended mid-word.
+                root.glyphSelection.setSelection(root.mtAreas, root.mtTexts.join("\n"));
                 root.glyphSelection.open();
-                root.mtText = "";
-                root.mtAreas = null;
+            }
+
+            function mtForget() {
+                root.mtAreas = [];
+                root.mtTexts = [];
+                root.mtLastLineAt = 0;
+            }
+
+            Timer {
+                id: mtSettle
+                interval: 800
+                onTriggered: {
+                    // reMarkable's own test for "still writing", from their
+                    // viewport timer: wait while the pen is down or just up.
+                    // Capped, so a pen resting on the glass cannot hold the
+                    // menu back indefinitely.
+                    if (strokeHandler.timeSincePenUp() < 300
+                        && Date.now() - root.mtLastLineAt < 4000) {
+                        restart();
+                        return;
+                    }
+                    root.mtShow();
+                }
             }
 
             // If the lookup finds no text -- a highlight over an image, say --
             // no signal arrives, and the flag must not leak into the next
             // ordinary selection.
             Timer {
-                id: mtHighlightTimeout
+                id: mtLookupTimeout
                 interval: 1500
-                onTriggered: {
-                    root.mtFromHighlight = false;
-                    root.mtText = "";
-                    root.mtAreas = null;
-                }
+                onTriggered: root.mtLookupPending = false
             }
 
             Connections {
@@ -265,8 +306,8 @@ AFFECT /qml/device/view/documentview/DeviceSceneView.qml
                         || !root.controller) {
                         return;
                     }
-                    root.mtFromHighlight = true;
-                    mtHighlightTimeout.restart();
+                    root.mtLookupPending = true;
+                    mtLookupTimeout.restart();
                     root.controller.selectWithLine(stroke, SceneController.IgnoreTapGesture);
                 }
             }
@@ -274,17 +315,21 @@ AFFECT /qml/device/view/documentview/DeviceSceneView.qml
             Connections {
                 target: root.controller
                 function onGlyphsSelected(areas, text) {
-                    if (!root.mtFromHighlight) {
+                    if (!root.mtLookupPending) {
                         return;
                     }
-                    root.mtAreas = areas;
-                    root.mtText = text;
-                    Qt.callLater(root.mtOpenFromHighlight);
+                    root.mtLookupPending = false;
+                    mtLookupTimeout.stop();
+                    root.mtAddLine(areas, text);
                 }
-                function onAreaSelected(layer, sceneRect) {
-                    if (root.mtFromHighlight && root.mtText) {
-                        Qt.callLater(root.mtOpenFromHighlight);
-                    }
+            }
+
+            // The menu is recreated for each selection, so this follows it.
+            Connections {
+                target: root.glyphSelection
+                ignoreUnknownSignals: true
+                function onMtSaved() {
+                    root.mtForget();
                 }
             }
         }
