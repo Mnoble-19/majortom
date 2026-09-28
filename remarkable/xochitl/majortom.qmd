@@ -1,8 +1,9 @@
 ; MajorTom for the native reMarkable reader (xochitl).
 ;
-; Adds Translate and Save to the menu that appears when text in a book is
-; picked with the selection tool. That menu is reMarkable's own, shipped behind
-; the `[Experimental] GlyphSelection` flag; today it offers only Copy.
+; Translates text picked out of a book and offers to save it, in the menu that
+; appears when text is highlighted or picked with the selection tool. That menu
+; is reMarkable's own, shipped behind the `[Experimental] GlyphSelection` flag;
+; it offers only Copy.
 ;
 ; Everything lives in this one file on purpose. The Save handler needs the open
 ; document and page, which belong to the reader view further up the tree; rather
@@ -23,10 +24,28 @@ AFFECT /qml/device/view/documentview/GlyphSelectionHandler.qml
             property bool mtFailed: false
             readonly property bool mtTranslated: mtTranslation !== "" || mtFailed
 
+            // Lets the reader view start a fresh quote after a save, rather
+            // than folding the next highlight into the one just saved.
+            signal mtSaved()
+
+            // There is no Translate button: showing the menu is the request.
+            // Only a menu on screen is translated -- reMarkable's own handler
+            // sets text on a menu it then destroys without showing, once per
+            // highlight, and that one must not cost a request.
+            function mtTranslateIfShown() {
+                if (root.visible && root._selectedText) {
+                    Qt.callLater(root.mtTranslate);
+                }
+            }
+
+            onVisibleChanged: root.mtTranslateIfShown()
+
             on_SelectedTextChanged: {
                 root.mtTranslation = "";
                 root.mtBusy = false;
                 root.mtFailed = false;
+                // Covers a line joining the quote while the menu is open.
+                root.mtTranslateIfShown();
             }
 
             // Text from a laid-out page carries its line breaks, including
@@ -50,8 +69,14 @@ AFFECT /qml/device/view/documentview/GlyphSelectionHandler.qml
             }
 
             function mtTranslate() {
-                const text = root.mtCleanText();
-                if (!text || root.mtBusy) {
+                let text;
+                try {
+                    text = root.mtCleanText();
+                } catch (e) {
+                    // Dismissed between being scheduled and running.
+                    return;
+                }
+                if (!text) {
                     return;
                 }
                 root.mtBusy = true;
@@ -60,17 +85,28 @@ AFFECT /qml/device/view/documentview/GlyphSelectionHandler.qml
                     if (xhr.readyState !== XMLHttpRequest.DONE) {
                         return;
                     }
-                    root.mtBusy = false;
                     try {
-                        const data = JSON.parse(xhr.responseText);
-                        root.mtTranslation = data[0].map(part => part[0]).join("").trim();
-                        root.mtFailed = root.mtTranslation === "";
+                        // A line joined the quote while this was out: the
+                        // answer is for text no longer on screen.
+                        if (root.mtCleanText() !== text) {
+                            return;
+                        }
+                        root.mtBusy = false;
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            root.mtTranslation = data[0].map(part => part[0]).join("").trim();
+                            root.mtFailed = root.mtTranslation === "";
+                        } catch (e) {
+                            root.mtFailed = true;
+                        }
                     } catch (e) {
-                        root.mtFailed = true;
+                        // The menu was closed, and this object with it.
                     }
                 };
+                // German, not auto-detect: a single inflected word is too
+                // little to detect from ("auserlesene" came back as Norwegian).
                 xhr.open("GET", "https://translate.googleapis.com/translate_a/single"
-                         + "?client=gtx&sl=auto&tl=en&dt=t&q=" + encodeURIComponent(text));
+                         + "?client=gtx&sl=de&tl=en&dt=t&q=" + encodeURIComponent(text));
                 xhr.send();
             }
 
@@ -106,6 +142,7 @@ AFFECT /qml/device/view/documentview/GlyphSelectionHandler.qml
                 };
                 xhr.open("PUT", "file://" + path);
                 xhr.send(JSON.stringify(entry));
+                root.mtSaved();
                 root.close();
             }
 
@@ -147,15 +184,6 @@ AFFECT /qml/device/view/documentview/GlyphSelectionHandler.qml
         TRAVERSE SelectionContextualMenu#selectionMenu
             LOCATE AFTER ALL
             INSERT {
-                ArkControls.ContextualMenu.Button {
-                    focusPolicy: Qt.NoFocus
-                    type: selectionMenu.type
-                    iconSource: "qrc:/ark/icons/language"
-                    text: root.mtBusy ? qsTr("…") : qsTr("Translate")
-                    visible: !root.mtTranslated
-                    onClicked: root.mtTranslate()
-                }
-
                 ArkControls.ContextualMenu.Button {
                     focusPolicy: Qt.NoFocus
                     type: selectionMenu.type
