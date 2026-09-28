@@ -1,8 +1,8 @@
 # MajorTom — reMarkable
 
 Save German words and phrases while reading on a reMarkable 2, in reMarkable's
-own reader. Highlight text and a menu opens with **Translate**; after
-translating, **Save word** or **Save phrase**. Saves land in the desktop app's
+own reader. Highlight text and its translation appears next to it, with **Save
+word** and **Save phrase**. Saves land in the desktop app's
 Books tab when you plug the tablet in and press Sync.
 
 Nothing replaces the reader. A patch adds three buttons to a menu reMarkable
@@ -38,9 +38,14 @@ up the settings file first), and restarts the reader.
 ## Reading
 
 With the **highlighter** — snap to text on — highlight a word or sentence. The
-highlight is made as usual, and a menu opens next to it: Copy, and Translate.
-Translate shows the English below the menu and turns the buttons into Save word
-and Save phrase. Saving shows reMarkable's own notification.
+highlight is made as usual, and once the pen settles a menu opens next to it
+with the English below: Copy, Save word, Save phrase. Saving shows reMarkable's
+own notification.
+
+A quote that runs over several lines is translated whole. Highlight the lines
+one after another; each line joins the same quote if it comes within three
+seconds of the last, and the menu waits until you stop. If it has already
+opened after the first line, the next line extends it and it translates again.
 
 The **selection tool** opens the same menu, but drawing a loop that catches
 exactly the right words takes a few tries, which is why the highlighter was
@@ -74,14 +79,21 @@ It touches two files:
   the translation panel, and the code behind them. The save needs the open book
   and page, which belong to the reader view further up; rather than patch that
   view too, the code walks up its parent chain at runtime to find them.
-- **`DeviceSceneView.qml`** gets two listeners for the highlighter. A
-  highlighter stroke goes to `highlightWithLine`, which draws the highlight and
-  hands back no text; a selection stroke goes to `selectWithLine`, which
-  reports the words under it. So after a highlight snapped to text, the patch
-  runs `selectWithLine` on the same stroke and opens the menu with what comes
-  back. reMarkable's own handler closes that selection straight away, because
-  the highlighter is not the selection tool, so the menu is reopened with
-  `Qt.callLater`, after every handler for the event has run.
+- **`DeviceSceneView.qml`** gets the highlighter hook. A highlighter stroke
+  goes to `highlightWithLine`, which draws the highlight and hands back no
+  text; a selection stroke goes to `selectWithLine`, which reports the words
+  under it. So after a highlight snapped to text, the patch runs
+  `selectWithLine` on the same stroke and collects what comes back. Each line
+  of a quote is its own stroke, so lines are gathered, and the menu opens from
+  a timer 0.8s after the last one — held back while the pen is still writing,
+  using the same `timeSincePenUp()` test reMarkable's own repaint timer uses.
+  Opening from a timer also means it opens after reMarkable's own handler has
+  closed the selection, which it does because the highlighter is not the
+  selection tool.
+
+The menu translates as soon as it has text; there is no Translate button. A
+translation that comes back after another line joined the quote is discarded,
+so a late answer for one line cannot replace the answer for the whole.
 
 ### Saving and translating
 
@@ -163,8 +175,11 @@ install.sh             put the patch on a plugged-in tablet and switch the menu 
 
 ## Known gaps
 
-- **Every highlight opens the menu.** Tap outside it to dismiss when you only
-  wanted the highlight.
+- **Every highlight opens the menu and translates.** Tap outside it to
+  dismiss when you only wanted the highlight.
+- **Lines are joined by time, not position.** Two unrelated highlights within
+  three seconds of each other are treated as one quote. Saving always starts a
+  fresh one.
 - **No offline translation.** The German dictionary that shipped with the
   KOReader version is gone with it; reading the same StarDict files from QML
   would make single words translate with no wifi.
@@ -175,3 +190,6 @@ install.sh             put the patch on a plugged-in tablet and switch the menu 
   later — by choice.
 - **Translation quality is Google's**, flatter than DeepL on long literary
   sentences.
+- **The source language is fixed to German.** Auto-detect misreads single
+  inflected words ("auserlesene" as Norwegian), so text in any other language
+  translates badly.

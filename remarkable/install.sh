@@ -60,9 +60,10 @@ on "cd $XOVI && ./start" >/dev/null 2>&1
 say "Done."
 cat <<EOF
 
-Highlight text in a book (highlighter, with snap to text on) and a menu opens
-with Translate. After translating: Save word or Save phrase. The selection
-tool works too.
+Highlight text in a book (highlighter, with snap to text on) and its
+translation appears next to it, with Save word and Save phrase. A quote over
+several lines is translated whole if you highlight the lines one after
+another. The selection tool works too.
 
 Translation needs the tablet on wifi at that moment; without it you can still
 save, untranslated.
