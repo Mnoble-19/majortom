@@ -8,6 +8,8 @@ final class Store: ObservableObject {
     @Published private(set) var sources: [Source] = []
     @Published private(set) var stats = Stats()
     @Published private(set) var loadError: String?
+    /// Bumped when a chat changes, so the AI tab re-reads its list.
+    @Published private(set) var chatsVersion = 0
 
     private var db: Database?
     private var fingerprint = ""
@@ -263,6 +265,64 @@ final class Store: ObservableObject {
     private static func spacing(after streak: Int) -> TimeInterval {
         let day: TimeInterval = 86_400
         return streak <= 1 ? day : 3 * day
+    }
+
+    // MARK: - Chats
+
+    /// Every conversation with the model, most recently active first.
+    func chats() -> [ChatSummary] {
+        guard let db else { return [] }
+        return (try? db.query("""
+            SELECT c.id, c.item_id, c.title, c.updated_at, COUNT(m.id)
+            FROM chat c LEFT JOIN chat_message m ON m.chat_id = c.id
+            GROUP BY c.id
+            HAVING COUNT(m.id) > 0
+            ORDER BY c.updated_at DESC
+            """) { r in
+            ChatSummary(id: r.int(0), itemID: r.isNull(1) ? nil : r.int(1), title: r.string(2),
+                        updatedAt: r.date(3), messageCount: Int(r.int(4)))
+        }) ?? []
+    }
+
+    /// The latest conversation about a word, so asking again picks it up.
+    func chatID(for item: Item) -> Int64? {
+        try? db?.query("SELECT id FROM chat WHERE item_id = ? ORDER BY updated_at DESC LIMIT 1",
+                       [item.id]) { $0.int(0) }.first
+    }
+
+    func createChat(about item: Item?, title: String) -> Int64? {
+        let now = ISO8601.string()
+        return try? db?.run(
+            "INSERT INTO chat (item_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            [item?.id, title, now, now])
+    }
+
+    func messages(in chatID: Int64) -> [ChatMessage] {
+        (try? db?.query("SELECT id, role, content FROM chat_message WHERE chat_id = ? ORDER BY id",
+                        [chatID]) { r in
+            ChatMessage(id: r.int(0), role: ChatMessage.Role(rawValue: r.string(1)) ?? .user,
+                        content: r.string(2))
+        }) ?? []
+    }
+
+    @discardableResult
+    func addMessage(_ role: ChatMessage.Role, _ content: String, to chatID: Int64) -> ChatMessage? {
+        let now = ISO8601.string()
+        guard let id = try? db?.run(
+            "INSERT INTO chat_message (chat_id, role, content, at) VALUES (?, ?, ?, ?)",
+            [chatID, role.rawValue, content, now]) else { return nil }
+        _ = try? db?.run("UPDATE chat SET updated_at = ? WHERE id = ?", [now, chatID])
+        chatsVersion += 1
+        return ChatMessage(id: id, role: role, content: content)
+    }
+
+    func item(id: Int64) -> Item? {
+        queryItems("WHERE i.id = ?", [id]).first
+    }
+
+    func deleteChat(_ chatID: Int64) {
+        _ = try? db?.run("DELETE FROM chat WHERE id = ?", [chatID])
+        chatsVersion += 1
     }
 
     private func write(_ sql: String, _ binds: [Any?]) {

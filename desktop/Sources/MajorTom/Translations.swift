@@ -138,7 +138,7 @@ final class Translations: ObservableObject {
     /// The model to use, or nil for none. With none picked yet, takes the
     /// first one the endpoint lists and remembers it, so a running server
     /// works without a trip to Settings.
-    private static func modelSettings() async -> LLMSettings? {
+    static func modelSettings() async -> LLMSettings? {
         var settings = Settings.llm
         guard settings.enabled, !settings.endpoint.isEmpty else { return nil }
         if settings.model.isEmpty {

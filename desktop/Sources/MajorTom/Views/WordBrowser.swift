@@ -14,6 +14,8 @@ struct WordBrowser<Header: View>: View {
     @State private var selection: Item.ID?
     @State private var confirmingRemoval: Item?
     @FocusState private var gridFocused: Bool
+    /// The word being asked about, pushed as its own screen; Back returns here.
+    @State private var asking: Item?
 
     enum Filter: String, CaseIterable, Identifiable {
         case all = "All", learning = "To learn", learned = "Learned", phrases = "Phrases", starred = "Starred"
@@ -99,6 +101,11 @@ struct WordBrowser<Header: View>: View {
                 withAnimation(.easeOut(duration: 0.15)) { scroll.scrollTo(next, anchor: nil) }
                 return .handled
             }
+            .onKeyPress(.return) {
+                guard let selected else { return .ignored }
+                asking = selected
+                return .handled
+            }
             .onKeyPress(.escape) {
                 guard selection != nil else { return .ignored }
                 selection = nil
@@ -111,11 +118,14 @@ struct WordBrowser<Header: View>: View {
         .onDeleteCommand { confirmingRemoval = selected }
         .inspector(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selection = nil } })) {
             if let item = selected {
-                WordInspector(item: item, onClose: { selection = nil }) { confirmingRemoval = item }
+                WordInspector(item: item, onClose: { selection = nil }, onAsk: { asking = item }) {
+                    confirmingRemoval = item
+                }
                     .id(item.id)
                     .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
             }
         }
+        .navigationDestination(item: $asking) { AskView(item: $0) }
         .confirmationDialog(
             "Delete “\(confirmingRemoval?.text ?? "")”?",
             isPresented: Binding(get: { confirmingRemoval != nil }, set: { if !$0 { confirmingRemoval = nil } })
@@ -216,6 +226,7 @@ private struct WordInspector: View {
     @EnvironmentObject private var translations: Translations
     let item: Item
     let onClose: () -> Void
+    let onAsk: () -> Void
     let onRemove: () -> Void
 
     @State private var meaning = ""
@@ -255,6 +266,13 @@ private struct WordInspector: View {
                 }
 
                 meaningSection
+
+                Button(action: onAsk) {
+                    Label("Ask about this word", systemImage: "bubble.left.and.bubble.right.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ProminentButtonStyle(fill: Palette.accent, ink: .white))
+                .help("Chat with the model about it — press Return from the list")
 
                 if !item.register.isEmpty || !item.usageNote.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
