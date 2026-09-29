@@ -143,9 +143,6 @@ private struct LiveView: View {
     let pending: PendingWords
     @State private var justSaved: String?
     @State private var toastTask: Task<Void, Never>?
-    /// Follow new lines only while at the bottom; scrolling up to reread
-    /// stops it until you jump back.
-    @State private var following = true
     /// Set by a long press: the first word of a phrase, waiting for a tap on
     /// its last word.
     @State private var phraseStart: (line: Line.ID, index: Int)?
@@ -160,55 +157,35 @@ private struct LiveView: View {
     }
 
     var body: some View {
-        ScrollViewReader { scroll in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(session.lines) { line in
-                        FlowLayout(spacing: 4, lineSpacing: 6) {
-                            ForEach(Array(line.text.split(separator: " ").enumerated()), id: \.offset) { index, token in
-                                word(String(token), at: index, in: line)
-                            }
+        FollowingScrollView(following: "\(session.lines.count) \(session.volatile)") {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(session.lines) { line in
+                    FlowLayout(spacing: 4, lineSpacing: 6) {
+                        ForEach(Array(line.text.split(separator: " ").enumerated()), id: \.offset) { index, token in
+                            word(String(token), at: index, in: line)
                         }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .card(padding: 16, radius: 22)
+                    .id(line.id)
+                }
+                if !session.volatile.isEmpty {
+                    Text(session.volatile)
+                        .font(.rounded(21))
+                        .foregroundStyle(Palette.tertiary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .card(padding: 16, radius: 22)
-                        .id(line.id)
-                    }
-                    if !session.volatile.isEmpty {
-                        Text(session.volatile)
-                            .font(.rounded(21))
-                            .foregroundStyle(Palette.tertiary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .card(padding: 16, radius: 22)
-                            .opacity(0.7)
-                    }
-                    if session.lines.isEmpty && session.volatile.isEmpty {
-                        Text("Listening… lines appear here as people speak.")
-                            .font(.rounded(16))
-                            .foregroundStyle(Palette.secondary)
-                            .padding(.top, 40)
-                            .frame(maxWidth: .infinity)
-                    }
-                    Color.clear.frame(height: 1).id("bottom")
+                        .opacity(0.7)
                 }
-                .padding(16)
-            }
-            .trackingBottom($following)
-            .onChange(of: session.lines.count) { _, _ in
-                guard following else { return }
-                withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
-            }
-            .onChange(of: session.volatile) { _, _ in
-                guard following else { return }
-                scroll.scrollTo("bottom", anchor: .bottom)
-            }
-            .overlay(alignment: .bottom) {
-                if !following {
-                    JumpToLatestButton {
-                        withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
-                    }
+                if session.lines.isEmpty && session.volatile.isEmpty {
+                    Text("Listening… lines appear here as people speak.")
+                        .font(.rounded(16))
+                        .foregroundStyle(Palette.secondary)
+                        .padding(.top, 40)
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .animation(.easeOut(duration: 0.2), value: following)
+            .padding(16)
         }
         .overlay(alignment: .bottom) { toast }
         .safeAreaInset(edge: .bottom) { controls }
