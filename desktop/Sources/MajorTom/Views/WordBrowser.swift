@@ -182,14 +182,19 @@ private struct WordCard: View {
 
             Spacer(minLength: 8)
 
-            if let tag = item.positionLabel {
-                Text(tag)
-                    .font(.rounded(12, .bold))
-                    .foregroundStyle(Palette.secondary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .frame(height: 24)
-                    .background(Palette.raised, in: Capsule())
+            HStack(spacing: 6) {
+                if let tag = item.positionLabel {
+                    Text(tag)
+                        .font(.rounded(12, .bold))
+                        .foregroundStyle(Palette.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .frame(height: 24)
+                        .background(Palette.raised, in: Capsule())
+                }
+                if !item.register.isEmpty {
+                    RegisterTag(register: item.register, hasNote: !item.usageNote.isEmpty)
+                }
             }
         }
         .padding(16)
@@ -250,6 +255,24 @@ private struct WordInspector: View {
                 }
 
                 meaningSection
+
+                if !item.register.isEmpty || !item.usageNote.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !item.register.isEmpty {
+                            RegisterTag(register: item.register, hasNote: false)
+                        }
+                        if !item.usageNote.isEmpty {
+                            Text(item.usageNote)
+                                .font(.rounded(15))
+                                .foregroundStyle(Palette.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.warmSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
 
                 if !item.alternatives.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
@@ -359,14 +382,12 @@ private struct WordInspector: View {
 
             if let suggestion {
                 SuggestionCard(gloss: suggestion, agrees: agrees(suggestion)) {
-                    store.applyTranslation(suggestion.meaning, sentence: suggestion.sentence,
-                                           alternatives: suggestion.alternatives, to: item)
+                    store.apply(suggestion, to: item)
                     meaning = suggestion.meaning
                     self.suggestion = nil
                 } onKeep: {
                     // Keep your meaning, but take the extras the model offered.
-                    store.applyTranslation(item.translation, sentence: suggestion.sentence,
-                                           alternatives: suggestion.alternatives, to: item)
+                    store.apply(suggestion, meaning: item.translation, to: item)
                     self.suggestion = nil
                 }
             }
@@ -411,8 +432,7 @@ private struct WordInspector: View {
                 let gloss = try await translations.check(item)
                 if item.translation.isEmpty {
                     // Nothing of yours to compare against: take it.
-                    store.applyTranslation(gloss.meaning, sentence: gloss.sentence,
-                                           alternatives: gloss.alternatives, to: item)
+                    store.apply(gloss, to: item)
                     meaning = gloss.meaning
                 } else {
                     suggestion = gloss
@@ -466,5 +486,28 @@ private struct SuggestionCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.accentSoft.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// How a word sits in today's German, for the few that are not ordinary. A
+/// dot says the model also left a note about it.
+private struct RegisterTag: View {
+    let register: String
+    let hasNote: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(register.capitalized)
+            if hasNote {
+                Circle().frame(width: 5, height: 5)
+            }
+        }
+        .font(.rounded(12, .bold))
+        .foregroundStyle(Palette.warmText)
+        .lineLimit(1)
+        .padding(.horizontal, 10)
+        .frame(height: 24)
+        .background(Palette.warmSoft, in: Capsule())
+        .help(hasNote ? "The model left a note about this word" : "")
     }
 }

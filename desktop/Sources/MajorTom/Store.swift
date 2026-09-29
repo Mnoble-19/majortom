@@ -17,7 +17,7 @@ final class Store: ObservableObject {
     private static let itemColumns = """
         i.id, i.source_id, s.kind, COALESCE(NULLIF(s.display_title, ''), s.title), s.url, i.kind, i.text, i.translation,
         i.context, i.context_translation, i.position, i.starred, i.status, i.created_at,
-        i.alternatives
+        i.alternatives, i.register, i.usage_note
         """
 
     init() {
@@ -124,6 +124,8 @@ final class Store: ObservableObject {
             context: r.string(8),
             contextTranslation: r.string(9),
             alternatives: r.string(14).split(separator: "\n").map(String.init),
+            register: r.string(15),
+            usageNote: r.string(16),
             position: r.double(10),
             starred: r.bool(11),
             status: ItemStatus(rawValue: r.string(12)) ?? .learning,
@@ -153,13 +155,40 @@ final class Store: ObservableObject {
 
     /// What a translator came back with. Replaces the meaning; keeps an
     /// existing sentence translation if this one has none.
-    func applyTranslation(_ meaning: String, sentence: String, alternatives: [String], to item: Item) {
+    /// Writes a translation. `byModel` is false for Apple's translator, which
+    /// has no alternatives or notes to give, so the model's earlier ones stay.
+    func applyTranslation(
+        _ meaning: String, sentence: String, alternatives: [String],
+        register: String, note: String, byModel: Bool, to item: Item
+    ) {
         write("""
             UPDATE item SET translation = ?,
                 context_translation = COALESCE(NULLIF(?, ''), context_translation),
-                alternatives = ?
+                alternatives = CASE WHEN ? THEN ? ELSE alternatives END,
+                register = CASE WHEN ? THEN ? ELSE register END,
+                usage_note = CASE WHEN ? THEN ? ELSE usage_note END,
+                enriched_at = CASE WHEN ? THEN ? ELSE enriched_at END
             WHERE id = ?
-            """, [meaning, sentence, alternatives.joined(separator: "\n"), item.id])
+            """, [meaning, sentence,
+                  byModel, alternatives.joined(separator: "\n"),
+                  byModel, register,
+                  byModel, note,
+                  byModel, ISO8601.string(),
+                  item.id])
+    }
+
+    /// Translated words the model has not looked at yet: from the browser,
+    /// which brings its own translation, or from before usage notes existed.
+    func unenrichedItems(in scope: Scope = .all) -> [Item] {
+        let waiting = "WHERE i.translation != '' AND i.enriched_at IS NULL"
+        switch scope {
+        case .all:
+            return queryItems("\(waiting) ORDER BY i.created_at DESC")
+        case .kind(let kind):
+            return queryItems("\(waiting) AND s.kind = ? ORDER BY i.created_at DESC", [kind.rawValue])
+        case .source(let source):
+            return queryItems("\(waiting) AND i.source_id = ? ORDER BY i.created_at DESC", [source.id])
+        }
     }
 
     /// Only the name shown here; an empty name goes back to the original.

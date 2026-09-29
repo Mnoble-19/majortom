@@ -12,6 +12,12 @@ public struct Gloss: Sendable, Equatable {
     /// Other German words for the same meaning, a small thesaurus. Only the
     /// model gives these; Apple's translator leaves it empty.
     public var alternatives: [String] = []
+    /// How the word sits in today's German — "colloquial", "dated" and so on
+    /// — or empty for an ordinary word, which is most of them.
+    public var register: String = ""
+    /// Said only when it matters: the word is bookish, dialect, ruder than it
+    /// looks, or has a more natural everyday alternative. Usually empty.
+    public var usageNote: String = ""
     public var origin: Origin
 
     public enum Origin: String, Sendable {
@@ -91,21 +97,48 @@ public struct ModelTranslator: Sendable {
     }
 
     /// `context` is the utterances either side, which is what lets the model
-    /// tell one sense of a word from another.
-    public func gloss(word: String, sentence: String, context: [String] = []) async throws -> Gloss {
+    /// tell one sense of a word from another. `from` says where the word was
+    /// met — "the novel “Krieg und Frieden”" — so it can tell a bookish word
+    /// from an everyday one.
+    public func gloss(word: String, sentence: String, context: [String] = [], from: String = "") async throws -> Gloss {
+        let question = Question(word: word, sentence: sentence, context: context, from: from)
+        return try await glosses([question])[0].get()
+    }
+
+    /// One word to translate, with what the model needs to pick its sense.
+    public struct Question: Sendable {
+        public let word: String
+        public let sentence: String
+        public let context: [String]
+        public let from: String
+
+        public init(word: String, sentence: String, context: [String] = [], from: String = "") {
+            self.word = word
+            self.sentence = sentence
+            self.context = context
+            self.from = from
+        }
+    }
+
+    /// Several words in one request. A thinking model spends most of its time
+    /// getting going, so five words at once cost little more than one. Each
+    /// answer is checked on its own: one bad gloss fails that word, not the
+    /// batch.
+    public func glosses(_ questions: [Question]) async throws -> [Result<Gloss, Error>] {
+        guard !questions.isEmpty else { return [] }
         do {
-            return try await ask(word: word, sentence: sentence, context: context, schema: true)
+            return try await ask(questions, schema: true)
         } catch TranslatorError.http(let code, let body) where Self.rejectedTheSchema(code, body) {
             // Not every OpenAI-compatible server implements `response_format`
             // with a JSON schema — Ollama takes a plain `json` mode, some older
             // llama.cpp builds take nothing. Ask again without it and lean on
             // the prompt plus the brace extraction below.
-            return try await ask(word: word, sentence: sentence, context: context, schema: false)
+            return try await ask(questions, schema: false)
         }
     }
 
-    private func ask(word: String, sentence: String, context: [String], schema: Bool) async throws -> Gloss {
-        let payload = try request(word: word, sentence: sentence, context: context, schema: schema)
+    private func ask(_ questions: [Question], schema: Bool) async throws -> [Result<Gloss, Error>] {
+        let payload = try request(questions, schema: schema)
         let (data, response) = try await URLSession.shared.data(for: payload)
 
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -123,9 +156,14 @@ public struct ModelTranslator: Sendable {
         let text = message.content?.isEmpty == false
             ? message.content!
             : (message.reasoning_content ?? "")
-        guard let decoded = Answer.extract(from: text) else { throw TranslatorError.emptyReply }
+        guard let answers = Batch.extract(from: text)?.words else { throw TranslatorError.emptyReply }
 
-        return try validated(decoded, word: word, sentence: sentence)
+        // Answers come back in the order asked. A model that drops one leaves
+        // the rest where they were, so a short list fails only its tail.
+        return questions.enumerated().map { index, question in
+            guard index < answers.count else { return .failure(TranslatorError.emptyReply) }
+            return Result { try validated(answers[index], word: question.word, sentence: question.sentence) }
+        }
     }
 
     /// Nothing reaches the library unchecked. A model that answers in the wrong
@@ -145,6 +183,9 @@ public struct ModelTranslator: Sendable {
             .map(tidy)
             .filter { !$0.isEmpty && $0.count <= 60 && seen.insert($0.lowercased()).inserted }
 
+        let register = tidy(answer.register ?? "").lowercased()
+        let note = tidy(answer.usage_note ?? "")
+
         guard !meaning.isEmpty else { throw TranslatorError.emptyReply }
         // A gloss is a few words. A paragraph means the model ignored the
         // instruction, and storing it would wreck the review screen.
@@ -162,12 +203,20 @@ public struct ModelTranslator: Sendable {
             meaning: meaning,
             sentence: english,
             alternatives: Array(alternatives.prefix(Self.maxAlternatives)),
+            register: Self.registers.contains(register) ? register : "",
+            usageNote: note.count <= Self.maxNote ? note : "",
             origin: .model
         )
     }
 
     private static let maxMeaning = 300
     private static let maxAlternatives = 5
+    private static let maxNote = 400
+    /// Everything but "neutral", which is stored as empty so that only the
+    /// words worth flagging carry a label.
+    private static let registers: Set<String> = [
+        "colloquial", "formal", "literary", "dated", "regional", "vulgar",
+    ]
 
     private static func rejectedTheSchema(_ code: Int, _ body: String) -> Bool {
         guard (400..<500).contains(code) else { return false }
@@ -201,7 +250,7 @@ public struct ModelTranslator: Sendable {
         return try JSONDecoder().decode(ModelList.self, from: data).data.map(\.id)
     }
 
-    private func request(word: String, sentence: String, context: [String], schema: Bool) throws -> URLRequest {
+    private func request(_ questions: [Question], schema: Bool) throws -> URLRequest {
         guard !settings.endpoint.isEmpty, let base = URL(string: settings.endpoint) else {
             throw TranslatorError.badEndpoint(settings.endpoint)
         }
@@ -212,26 +261,40 @@ public struct ModelTranslator: Sendable {
             "max_tokens": settings.maxTokens,
             "messages": [
                 ["role": "system", "content": Self.systemPrompt],
-                ["role": "user", "content": Self.userPrompt(word: word, sentence: sentence, context: context)]
+                ["role": "user", "content": Self.userPrompt(questions)]
             ],
         ]
         if schema {
             // Constrained decoding, so the reply is always parseable instead of
-            // prose wrapped around JSON.
+            // prose wrapped around JSON — and holds exactly one answer a word.
+            let answer: [String: Any] = [
+                "type": "object",
+                "properties": [
+                    "dictionary_form": ["type": "string"],
+                    "english_meaning": ["type": "string"],
+                    "english_sentence": ["type": "string"],
+                    "german_synonyms": ["type": "array", "items": ["type": "string"]],
+                    "register": ["type": "string", "enum": ["neutral"] + Self.registers.sorted()],
+                    "usage_note": ["type": "string"]
+                ],
+                "required": ["dictionary_form", "english_meaning", "english_sentence", "german_synonyms",
+                             "register", "usage_note"],
+                "additionalProperties": false
+            ]
             body["response_format"] = [
                 "type": "json_schema",
                 "json_schema": [
-                    "name": "gloss",
+                    "name": "glosses",
                     "strict": true,
                     "schema": [
                         "type": "object",
                         "properties": [
-                            "dictionary_form": ["type": "string"],
-                            "english_meaning": ["type": "string"],
-                            "english_sentence": ["type": "string"],
-                            "german_synonyms": ["type": "array", "items": ["type": "string"]]
+                            "words": [
+                                "type": "array", "items": answer,
+                                "minItems": questions.count, "maxItems": questions.count
+                            ]
                         ],
-                        "required": ["dictionary_form", "english_meaning", "english_sentence", "german_synonyms"],
+                        "required": ["words"],
                         "additionalProperties": false
                     ]
                 ]
@@ -251,10 +314,13 @@ public struct ModelTranslator: Sendable {
     }
 
     private static let systemPrompt = """
-        You help someone learning German. You are given a German word or phrase \
-        and the sentence it was spoken in, sometimes with the lines around it.
+        You help someone learning German. They are at B2/C1: they understand \
+        most things and want to sound native. You are given one or more \
+        numbered German words or phrases, each with the sentence it was met \
+        in, sometimes with the lines around it, and where it came from.
 
-        Fill in the fields. `dictionary_form` is the infinitive for a verb, or \
+        Answer every one, in order, as an entry in `words`. Each word is on its \
+        own: judge it by its own sentence. For each, fill in the fields. `dictionary_form` is the infinitive for a verb, or \
         the nominative singular with its article for a noun. `english_meaning` \
         is a short English gloss of what the word means *in this context* — if \
         it has several senses, give the one actually used here rather than \
@@ -263,15 +329,35 @@ public struct ModelTranslator: Sendable {
         phrases that mean the same thing in this context, most common first; \
         leave it empty if there are none. Write English in the English fields \
         and German in the German one.
+
+        `register` is how the word sits in today's German: "neutral" for \
+        ordinary words a native speaker would use anywhere — most words are \
+        this — or "colloquial", "formal", "literary", "dated", "regional" or \
+        "vulgar" when it clearly is one of those.
+
+        `usage_note` is usually empty. Write one only when a fluent learner \
+        would likely use the word wrongly without it: it is dated or bookish and \
+        people now say something else, it is dialect, it is much ruder or more \
+        formal than it looks, or a close alternative means something subtly \
+        different. Keep it to one short sentence, under 20 words, and name the \
+        everyday alternative when there is one. Do not explain the meaning \
+        again, and never write a note just to say the word is common. Decide \
+        quickly: if nothing stands out at once, leave it empty.
         """
 
-    private static func userPrompt(word: String, sentence: String, context: [String]) -> String {
-        var lines = ["word: \(word)", "sentence: \(sentence)"]
-        if !context.isEmpty {
-            lines.append("surrounding conversation:")
-            lines.append(contentsOf: context.map { "  \($0)" })
+    private static func userPrompt(_ questions: [Question]) -> String {
+        questions.enumerated().map { index, question in
+            var lines = ["\(index + 1).", "word: \(question.word)", "sentence: \(question.sentence)"]
+            if !question.from.isEmpty {
+                lines.append("from: \(question.from)")
+            }
+            if !question.context.isEmpty {
+                lines.append("surrounding conversation:")
+                lines.append(contentsOf: question.context.map { "  \($0)" })
+            }
+            return lines.joined(separator: "\n")
         }
-        return lines.joined(separator: "\n")
+        .joined(separator: "\n\n")
     }
 
     // MARK: - Wire types
@@ -302,16 +388,23 @@ public struct ModelTranslator: Sendable {
         let english_sentence: String
         /// Optional so a model that ignores it still yields a usable gloss.
         let german_synonyms: [String]?
+        let register: String?
+        let usage_note: String?
+
+    }
+
+    private struct Batch: Decodable {
+        let words: [Answer]
 
         /// Tolerant of a model that wraps its JSON in prose or a code fence.
-        static func extract(from text: String) -> Answer? {
-            if let direct = try? JSONDecoder().decode(Answer.self, from: Data(text.utf8)) {
+        static func extract(from text: String) -> Batch? {
+            if let direct = try? JSONDecoder().decode(Batch.self, from: Data(text.utf8)) {
                 return direct
             }
             guard let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}"),
                   start < end else { return nil }
             let slice = String(text[start...end])
-            return try? JSONDecoder().decode(Answer.self, from: Data(slice.utf8))
+            return try? JSONDecoder().decode(Batch.self, from: Data(slice.utf8))
         }
     }
 }

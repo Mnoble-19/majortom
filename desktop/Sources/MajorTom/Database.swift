@@ -94,6 +94,13 @@ final class Database {
             ("review_due", "TEXT"),
             // German alternatives from the model, one per line.
             ("alternatives", "TEXT NOT NULL DEFAULT ''"),
+            // How the word sits in today's German, empty when it is ordinary.
+            ("register", "TEXT NOT NULL DEFAULT ''"),
+            // A note from the model, only for words where one matters.
+            ("usage_note", "TEXT NOT NULL DEFAULT ''"),
+            // When the model last looked at the word. Words translated by the
+            // browser, or before notes existed, are still null.
+            ("enriched_at", "TEXT"),
         ]
         for (column, definition) in added where !columnExists("item", column) {
             try exec("ALTER TABLE item ADD COLUMN \(column) \(definition);")
