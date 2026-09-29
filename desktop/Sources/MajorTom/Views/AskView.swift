@@ -18,7 +18,7 @@ struct AskView: View {
     @State private var sending = false
     @State private var failure: String?
     @State private var extracting = false
-    @State private var cards: [Flashcard]?
+    @State private var cards: CardSet?
     @State private var savedCount: Int?
     @FocusState private var inputFocused: Bool
 
@@ -92,7 +92,7 @@ struct AskView: View {
             dismiss()
             return .handled
         }
-        .sheet(item: Binding(get: { cards.map(CardSet.init) }, set: { cards = $0?.cards })) { set in
+        .sheet(item: $cards) { set in
             SaveCardsSheet(cards: set.cards) { kept in
                 for card in kept {
                     store.addOwnWord(card.word, translation: card.meaning, context: card.example)
@@ -239,7 +239,7 @@ struct AskView: View {
                 if found.isEmpty {
                     failure = "The model found nothing to save in this conversation."
                 } else {
-                    cards = found
+                    cards = CardSet(cards: found)
                 }
             } catch {
                 failure = "\(error)"
