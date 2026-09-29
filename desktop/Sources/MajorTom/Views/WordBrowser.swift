@@ -13,6 +13,7 @@ struct WordBrowser<Header: View>: View {
     @State private var search = ""
     @State private var selection: Item.ID?
     @State private var confirmingRemoval: Item?
+    @FocusState private var gridFocused: Bool
 
     enum Filter: String, CaseIterable, Identifiable {
         case all = "All", learning = "To learn", learned = "Learned", phrases = "Phrases", starred = "Starred"
@@ -47,39 +48,63 @@ struct WordBrowser<Header: View>: View {
     var body: some View {
         let shown = shown
 
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header()
-                    .padding(.bottom, 6)
-                HStack(spacing: 8) {
-                    ForEach(Filter.allCases.filter { $0 == .all || items.contains(where: $0.includes) }) { option in
-                        Pill(text: label(option), selected: filter == option) { filter = option }
+        ScrollViewReader { scroll in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header()
+                        .padding(.bottom, 6)
+                    HStack(spacing: 8) {
+                        ForEach(Filter.allCases.filter { $0 == .all || items.contains(where: $0.includes) }) { option in
+                            Pill(text: label(option), selected: filter == option) { filter = option }
+                        }
                     }
-                }
 
-                if shown.isEmpty {
-                    Text(search.isEmpty ? "Nothing here yet." : "No matches for “\(search)”.")
-                        .font(.rounded(15))
-                        .foregroundStyle(Palette.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 200)
-                } else {
-                    LazyVGrid(columns: columns, spacing: 14) {
-                        ForEach(shown) { item in
-                            WordCard(item: item, selected: item.id == selection)
-                                .onTapGesture { selection = item.id == selection ? nil : item.id }
-                                .contextMenu {
-                                    Button(item.status == .learned ? "Move back to learning" : "Mark as learned") {
-                                        store.setLearned(item, item.status != .learned)
+                    if shown.isEmpty {
+                        Text(search.isEmpty ? "Nothing here yet." : "No matches for “\(search)”.")
+                            .font(.rounded(15))
+                            .foregroundStyle(Palette.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 200)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 14) {
+                            ForEach(shown) { item in
+                                WordCard(item: item, selected: item.id == selection)
+                                    .id(item.id)
+                                    .onTapGesture {
+                                        selection = item.id == selection ? nil : item.id
+                                        gridFocused = true
                                     }
-                                    Button(item.starred ? "Unstar" : "Star") { store.toggleStar(item) }
-                                    Divider()
-                                    Button("Delete…", role: .destructive) { confirmingRemoval = item }
-                                }
+                                    .contextMenu {
+                                        Button(item.status == .learned ? "Move back to learning" : "Mark as learned") {
+                                            store.setLearned(item, item.status != .learned)
+                                        }
+                                        Button(item.starred ? "Unstar" : "Star") { store.toggleStar(item) }
+                                        Divider()
+                                        Button("Delete…", role: .destructive) { confirmingRemoval = item }
+                                    }
+                            }
                         }
                     }
                 }
+                .padding(32)
             }
-            .padding(32)
+            // Arrow keys step through the words in order, so reviewing a whole
+            // conversation does not mean clicking every card.
+            .focusable()
+            .focusEffectDisabled()
+            .focused($gridFocused)
+            .onKeyPress(keys: [.leftArrow, .upArrow, .rightArrow, .downArrow]) { press in
+                let back = press.key == .leftArrow || press.key == .upArrow
+                guard let next = step(back ? -1 : 1, in: shown) else { return .ignored }
+                selection = next
+                withAnimation(.easeOut(duration: 0.15)) { scroll.scrollTo(next, anchor: nil) }
+                return .handled
+            }
+            .onKeyPress(.escape) {
+                guard selection != nil else { return .ignored }
+                selection = nil
+                return .handled
+            }
+            .onAppear { gridFocused = true }
         }
         .background(Palette.background)
         .searchable(text: $search, placement: .toolbar, prompt: "Filter words")
@@ -104,6 +129,17 @@ struct WordBrowser<Header: View>: View {
         } message: {
             Text("It leaves the library for good, even if a browser sends it again.")
         }
+    }
+
+    /// The word `offset` places away from the selected one, or the first word
+    /// when nothing is selected yet. Stops at either end rather than wrapping.
+    private func step(_ offset: Int, in shown: [Item]) -> Item.ID? {
+        guard !shown.isEmpty else { return nil }
+        guard let current = shown.firstIndex(where: { $0.id == selection }) else {
+            return shown.first?.id
+        }
+        let target = current + offset
+        return shown.indices.contains(target) ? shown[target].id : nil
     }
 
     private func label(_ option: Filter) -> String {
