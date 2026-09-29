@@ -38,9 +38,19 @@ struct Source: Identifiable, Hashable {
     var phraseCount: Int
     var lastSavedAt: Date
     var learnedCount: Int
+    /// Given a name of your own in the app, which then always wins.
+    var renamed = false
 
     var itemCount: Int { wordCount + phraseCount }
     var progress: Double { itemCount == 0 ? 0 : Double(learnedCount) / Double(itemCount) }
+
+    /// What a card is labelled. Calls sit under the person already, so the
+    /// stored "Call with Lena — 2026-09-24" would only repeat it; the day is
+    /// all that tells them apart.
+    var cardTitle: String {
+        guard kind == .call, !renamed else { return title }
+        return createdAt.formatted(.dateTime.weekday(.wide).day().month(.wide))
+    }
 }
 
 /// Sources grouped by the site they came from. Derived, never stored: the
@@ -85,6 +95,10 @@ struct Item: Identifiable, Hashable {
     var contextTranslation: String
     /// Other German words for the same meaning, from the model.
     var alternatives: [String]
+    /// "colloquial", "dated" and so on; empty for an ordinary word.
+    var register: String
+    /// Only there when the model thought one was worth saying.
+    var usageNote: String
     /// Playback seconds for video, offset for calls, page for books.
     var position: Double
     var starred: Bool
@@ -93,6 +107,18 @@ struct Item: Identifiable, Hashable {
 
     /// "23:14" into a show or call, "page 48" in a book. Rendering a page as a
     /// time would be quietly wrong, so the two never share a format.
+    /// Where the word was met, told to the model so it can tell a bookish word
+    /// from an everyday one. Calls say only that it was a conversation: who it
+    /// was with is none of the model's business.
+    var origin: String {
+        switch sourceKind {
+        case .book: return "the novel “\(sourceTitle)”"
+        case .show: return sourceTitle.hasPrefix("http") ? "subtitles of a TV show" : "subtitles of “\(sourceTitle)”"
+        case .call: return "a spoken conversation"
+        case .own: return "a word the learner noted down themselves"
+        }
+    }
+
     var positionLabel: String? {
         guard position > 0 else { return nil }
         if sourceKind == .book { return "page \(Int(position))" }

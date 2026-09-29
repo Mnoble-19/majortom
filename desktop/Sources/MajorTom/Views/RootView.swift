@@ -4,7 +4,7 @@ import SwiftUI
 /// Flat, with no associated values, so each row's tag is a plain value the
 /// sidebar's selection can match.
 enum SidebarItem: Hashable, CaseIterable {
-    case home, review, shows, calls, books, mine
+    case home, review, ask, shows, calls, books, mine
 
     static let library: [SidebarItem] = [.shows, .calls, .books, .mine]
 
@@ -23,7 +23,7 @@ enum SidebarItem: Hashable, CaseIterable {
         case .calls: return .call
         case .books: return .book
         case .mine: return .own
-        case .home, .review: return nil
+        case .home, .review, .ask: return nil
         }
     }
 
@@ -31,6 +31,7 @@ enum SidebarItem: Hashable, CaseIterable {
         switch self {
         case .home: return "Home"
         case .review: return "Review"
+        case .ask: return "Ask"
         default: return kind!.label
         }
     }
@@ -39,6 +40,7 @@ enum SidebarItem: Hashable, CaseIterable {
         switch self {
         case .home: return "house.fill"
         case .review: return "rectangle.stack.fill"
+        case .ask: return "bubble.left.and.bubble.right.fill"
         default: return kind!.icon
         }
     }
@@ -78,6 +80,7 @@ struct RootView: View {
         List(selection: $section) {
             row(.home, badge: 0)
             row(.review, badge: store.stats.due)
+            row(.ask, badge: 0)
             Section("Library") {
                 ForEach(SidebarItem.library, id: \.self) { item in
                     row(item, badge: count(item))
@@ -123,6 +126,8 @@ struct RootView: View {
                 HomeView(open: open) { path.append(.source($0)) }
             case .review:
                 ReviewView(source: nil) { section = .home }
+            case .ask:
+                ChatsView()
             case .shows:
                 ShowsView { path.append(.platform(site: $0.id)) } openShow: { path.append(.source($0)) }
             case .calls:

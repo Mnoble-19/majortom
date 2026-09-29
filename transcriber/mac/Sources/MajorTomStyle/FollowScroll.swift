@@ -1,16 +1,59 @@
 import SwiftUI
 
-public extension View {
-    /// Keeps `atBottom` true while the scroll view shows its end, so a live
-    /// transcript follows new lines only until you scroll up to reread.
-    func trackingBottom(_ atBottom: Binding<Bool>) -> some View {
-        onScrollGeometryChange(for: Bool.self) { geometry in
-            geometry.contentOffset.y + geometry.containerSize.height
-                >= geometry.contentSize.height - 48
-        } action: { _, isAtBottom in
-            atBottom.wrappedValue = isAtBottom
+/// A live transcript's scroll view: it follows new lines until you scroll up
+/// to reread, and picks up following again once you scroll back to the end
+/// or press Jump to latest.
+///
+/// Only your own scrolling decides that. Working it out from the position
+/// alone does not hold up: each new line makes the content taller before the
+/// view has caught up, which reads as "scrolled away from the bottom" and
+/// switched following off by itself.
+public struct FollowingScrollView<Content: View, Trigger: Equatable>: View {
+    /// Whatever changes when something new arrives — a line count, the words
+    /// still being heard.
+    let trigger: Trigger
+    let content: Content
+
+    @State private var following = true
+    @State private var userScrolling = false
+
+    public init(following trigger: Trigger, @ViewBuilder content: () -> Content) {
+        self.trigger = trigger
+        self.content = content()
+    }
+
+    public var body: some View {
+        ScrollViewReader { scroll in
+            ScrollView {
+                content
+                Color.clear.frame(height: 1).id(Self.bottom)
+            }
+            .onScrollPhaseChange { _, phase in
+                userScrolling = phase == .interacting || phase == .tracking || phase == .decelerating
+            }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.containerSize.height
+                    >= geometry.contentSize.height - 48
+            } action: { _, atBottom in
+                if userScrolling { following = atBottom }
+            }
+            .onChange(of: trigger) { _, _ in
+                guard following else { return }
+                scroll.scrollTo(Self.bottom, anchor: .bottom)
+            }
+            .overlay(alignment: .bottom) {
+                if !following {
+                    JumpToLatestButton {
+                        following = true
+                        withAnimation { scroll.scrollTo(Self.bottom, anchor: .bottom) }
+                    }
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: following)
         }
     }
+
+    private static var bottom: String { "following-scroll-bottom" }
 }
 
 /// Shown while you have scrolled up in a live transcript.

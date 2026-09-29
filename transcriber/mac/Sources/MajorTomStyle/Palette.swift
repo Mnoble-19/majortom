@@ -32,6 +32,7 @@ public enum Palette {
     public static let goodSoft = dynamic(0xE3F7E8, 0x17301F)
     public static let warm = dynamic(0xFF9500, 0xFF9F0A)
     public static let warmText = dynamic(0xA35A00, 0xFFB45C)
+    public static let warmSoft = dynamic(0xFFF1DE, 0x33240F)
     public static let bad = dynamic(0xFF3B30, 0xFF453A)
     public static let badText = dynamic(0xB3261E, 0xFF8A80)
     public static let badSoft = dynamic(0xFFE4E1, 0x3A1C1A)

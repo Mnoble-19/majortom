@@ -8,11 +8,10 @@ struct MyWordsView: View {
     let pending: PendingWords
 
     @State private var text = ""
-    @State private var meaning = ""
     @State private var sentence = ""
     @FocusState private var focused: Field?
 
-    private enum Field { case text, meaning, sentence }
+    private enum Field { case text, sentence }
 
     var body: some View {
         List {
@@ -22,11 +21,6 @@ struct MyWordsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .focused($focused, equals: .text)
-                    .submitLabel(.next)
-                    .onSubmit { focused = .meaning }
-                TextField("Meaning (optional)", text: $meaning)
-                    .font(.rounded(17))
-                    .focused($focused, equals: .meaning)
                     .submitLabel(.next)
                     .onSubmit { focused = .sentence }
                 TextField("A sentence with it (optional)", text: $sentence, axis: .vertical)
@@ -42,7 +36,7 @@ struct MyWordsView: View {
                 .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
                 .listRowSeparator(.hidden)
             } footer: {
-                Text("Leave the meaning empty and your Mac fills it in when you send.")
+                Text("Your Mac translates it when you send, and the sentence helps it pick the right meaning.")
             }
             .listRowBackground(Palette.card)
 
@@ -76,11 +70,8 @@ struct MyWordsView: View {
     private func add() {
         let word = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !word.isEmpty else { return }
-        pending.addOwn(word,
-                       translation: meaning.trimmingCharacters(in: .whitespacesAndNewlines),
-                       sentence: sentence.trimmingCharacters(in: .whitespacesAndNewlines))
+        pending.addOwn(word, sentence: sentence.trimmingCharacters(in: .whitespacesAndNewlines))
         text = ""
-        meaning = ""
         sentence = ""
         focused = .text
     }

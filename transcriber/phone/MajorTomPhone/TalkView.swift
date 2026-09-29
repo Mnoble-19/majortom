@@ -143,13 +143,6 @@ private struct LiveView: View {
     let pending: PendingWords
     @State private var justSaved: String?
     @State private var toastTask: Task<Void, Never>?
-    /// Follow new lines only while at the bottom; scrolling up to reread
-    /// stops it until you jump back.
-    @State private var following = true
-    /// Set by a long press: the first word of a phrase, waiting for a tap on
-    /// its last word.
-    @State private var phraseStart: (line: Line.ID, index: Int)?
-
     private var saved: [SyncPayload.Word] {
         pending.sessions.first { $0.id == session.sessionID }?.words ?? []
     }
@@ -160,55 +153,31 @@ private struct LiveView: View {
     }
 
     var body: some View {
-        ScrollViewReader { scroll in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(session.lines) { line in
-                        FlowLayout(spacing: 4, lineSpacing: 6) {
-                            ForEach(Array(line.text.split(separator: " ").enumerated()), id: \.offset) { index, token in
-                                word(String(token), at: index, in: line)
-                            }
-                        }
+        FollowingScrollView(following: "\(session.lines.count) \(session.volatile)") {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(session.lines) { line in
+                    LineCard(line: line, savedWords: savedWords) { text in
+                        save(text, from: line)
+                    }
+                    .id(line.id)
+                }
+                if !session.volatile.isEmpty {
+                    Text(session.volatile)
+                        .font(.rounded(21))
+                        .foregroundStyle(Palette.tertiary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .card(padding: 16, radius: 22)
-                        .id(line.id)
-                    }
-                    if !session.volatile.isEmpty {
-                        Text(session.volatile)
-                            .font(.rounded(21))
-                            .foregroundStyle(Palette.tertiary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .card(padding: 16, radius: 22)
-                            .opacity(0.7)
-                    }
-                    if session.lines.isEmpty && session.volatile.isEmpty {
-                        Text("Listening… lines appear here as people speak.")
-                            .font(.rounded(16))
-                            .foregroundStyle(Palette.secondary)
-                            .padding(.top, 40)
-                            .frame(maxWidth: .infinity)
-                    }
-                    Color.clear.frame(height: 1).id("bottom")
+                        .opacity(0.7)
                 }
-                .padding(16)
-            }
-            .trackingBottom($following)
-            .onChange(of: session.lines.count) { _, _ in
-                guard following else { return }
-                withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
-            }
-            .onChange(of: session.volatile) { _, _ in
-                guard following else { return }
-                scroll.scrollTo("bottom", anchor: .bottom)
-            }
-            .overlay(alignment: .bottom) {
-                if !following {
-                    JumpToLatestButton {
-                        withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
-                    }
+                if session.lines.isEmpty && session.volatile.isEmpty {
+                    Text("Listening… lines appear here as people speak.")
+                        .font(.rounded(16))
+                        .foregroundStyle(Palette.secondary)
+                        .padding(.top, 40)
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .animation(.easeOut(duration: 0.2), value: following)
+            .padding(16)
         }
         .overlay(alignment: .bottom) { toast }
         .safeAreaInset(edge: .bottom) { controls }
@@ -216,45 +185,6 @@ private struct LiveView: View {
             ToolbarItem(placement: .principal) { header }
         }
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func word(_ text: String, at index: Int, in line: Line) -> some View {
-        let bare = Self.clean(text)
-        let isSaved = savedWords.contains(bare.lowercased())
-        let isStart = phraseStart?.line == line.id && phraseStart?.index == index
-        return Text(text)
-            .font(.rounded(21, isSaved ? .bold : .regular))
-            .padding(.horizontal, 3)
-            .padding(.vertical, 2)
-            .highlighted(isSaved)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(isStart ? Palette.accent : .clear, lineWidth: 2))
-            .contentShape(Rectangle())
-            .onTapGesture { tap(index, in: line) }
-            .onLongPressGesture(minimumDuration: 0.4) {
-                phraseStart = (line.id, index)
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            }
-    }
-
-    /// A tap saves the word — or, after a long press on another word in the
-    /// same line, the phrase running between the two.
-    private func tap(_ index: Int, in line: Line) {
-        let tokens = line.text.split(separator: " ").map(String.init)
-        defer { phraseStart = nil }
-        if let start = phraseStart, start.line == line.id, start.index != index {
-            save(Self.clean(tokens[min(start.index, index)...max(start.index, index)].joined(separator: " ")),
-                 from: line)
-        } else {
-            save(Self.clean(tokens[index]), from: line)
-        }
-    }
-
-    /// Trims the punctuation a transcript leaves on the ends — "Ahnung," — but
-    /// keeps what sits inside a phrase.
-    private static func clean(_ text: String) -> String {
-        text.trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines))
     }
 
     private var header: some View {
@@ -279,6 +209,8 @@ private struct LiveView: View {
             HStack(spacing: 10) {
                 Image(systemName: "checkmark").foregroundStyle(Palette.good)
                 Text("Saved “\(word)”")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 Button("Undo") {
                     pending.remove(word, from: session.sessionID)
                     withAnimation { justSaved = nil }
@@ -317,7 +249,7 @@ private struct LiveView: View {
                     .background(Palette.bad.opacity(0.18), in: Circle())
             }
             .accessibilityLabel("Stop listening")
-            Text(phraseStart == nil ? "Tap a word to keep it.\nHold one to start a phrase." : "Now tap the\nphrase’s last word")
+            Text("Tap a word to keep it.\nHold for its sentence,\nslide for a phrase.")
                 .font(.rounded(13, .medium))
                 .foregroundStyle(Palette.secondary)
                 .multilineTextAlignment(.trailing)
@@ -340,5 +272,140 @@ private struct LiveView: View {
             guard !Task.isCancelled else { return }
             withAnimation { justSaved = nil }
         }
+    }
+}
+
+/// One line of the transcript. Tap a word to keep it; hold to keep the whole
+/// sentence it sits in; hold and slide to keep just the words you slide over.
+///
+/// The gestures live on the card rather than on each word so that a slide can
+/// cross from word to word, which per-word gestures cannot do.
+private struct LineCard: View {
+    let line: Line
+    let savedWords: Set<String>
+    let onSave: (String) -> Void
+
+    /// Where each word sits on the card, for turning a touch into a word.
+    @State private var frames: [Int: CGRect] = [:]
+    /// The word the hold began on and the one the finger is over now.
+    @State private var selection: (anchor: Int, current: Int)?
+
+    private var tokens: [String] { line.text.split(separator: " ").map(String.init) }
+    private let space = "line"
+
+    var body: some View {
+        FlowLayout(spacing: 4, lineSpacing: 6) {
+            ForEach(Array(tokens.enumerated()), id: \.offset) { index, token in
+                word(token, at: index)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(space)) } action: {
+                        frames[index] = $0
+                    }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(padding: 16, radius: 22)
+        .coordinateSpace(.named(space))
+        .contentShape(Rectangle())
+        .gesture(hold.exclusively(before: tap))
+    }
+
+    private func word(_ text: String, at index: Int) -> some View {
+        let isSaved = savedWords.contains(Self.clean(text).lowercased())
+        let isSelected = selection.map { min($0.anchor, $0.current)...max($0.anchor, $0.current) }?
+            .contains(index) ?? false
+        return Text(text)
+            .font(.rounded(21, isSaved ? .bold : .regular))
+            .padding(.horizontal, 3)
+            .padding(.vertical, 2)
+            .highlighted(isSaved)
+            .background(isSelected ? Palette.accent.opacity(0.25) : .clear,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var tap: some Gesture {
+        SpatialTapGesture(coordinateSpace: .named(space)).onEnded { value in
+            guard let index = index(at: value.location) else { return }
+            onSave(Self.clean(tokens[index]))
+        }
+    }
+
+    /// A hold, then optionally a slide. Letting go without sliding keeps the
+    /// sentence; sliding keeps the words between where it began and ended.
+    private var hold: some Gesture {
+        LongPressGesture(minimumDuration: 0.35)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(space)))
+            .onChanged { value in
+                guard case .second(true, let drag) = value else { return }
+                guard let drag else {
+                    if selection == nil { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                    return
+                }
+                guard let index = nearestIndex(to: drag.location) else { return }
+                if let current = selection {
+                    if current.current != index {
+                        selection = (current.anchor, index)
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
+                } else {
+                    let start = nearestIndex(to: drag.startLocation) ?? index
+                    selection = (start, index)
+                }
+            }
+            .onEnded { value in
+                defer { selection = nil }
+                guard case .second(true, let drag) = value else { return }
+                let moved = drag.map { hypot($0.translation.width, $0.translation.height) > 12 } ?? false
+                if moved, let selection {
+                    let range = min(selection.anchor, selection.current)...max(selection.anchor, selection.current)
+                    onSave(Self.clean(tokens[range].joined(separator: " ")))
+                } else {
+                    let anchor = selection?.anchor ?? drag.flatMap { nearestIndex(to: $0.startLocation) }
+                    onSave(sentence(around: anchor))
+                }
+            }
+    }
+
+    /// The word under a point, if the point is on one.
+    private func index(at point: CGPoint) -> Int? {
+        frames.first { $0.value.insetBy(dx: -2, dy: -3).contains(point) }?.key
+    }
+
+    /// The word under a point, or the closest one on the same row — a slide
+    /// passes through the gaps between words and past the end of a row.
+    private func nearestIndex(to point: CGPoint) -> Int? {
+        if let hit = index(at: point) { return hit }
+        let row = frames.filter { $0.value.minY - 3 <= point.y && point.y <= $0.value.maxY + 3 }
+        let pool = row.isEmpty ? frames : row
+        return pool.min { distance($0.value, point) < distance($1.value, point) }?.key
+    }
+
+    private func distance(_ rect: CGRect, _ point: CGPoint) -> CGFloat {
+        hypot(max(rect.minX - point.x, 0, point.x - rect.maxX),
+              max(rect.minY - point.y, 0, point.y - rect.maxY))
+    }
+
+    /// The sentence holding word `index`, or the whole line when the hold
+    /// started off any word or the line is one sentence anyway.
+    private func sentence(around index: Int?) -> String {
+        let text = line.text
+        guard let index else { return text.trimmingCharacters(in: .whitespaces) }
+        var sentences: [String] = []
+        text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { substring, _, _, _ in
+            let trimmed = substring?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !trimmed.isEmpty { sentences.append(trimmed) }
+        }
+        var start = 0
+        for sentence in sentences {
+            let count = sentence.split(separator: " ").count
+            if index < start + count { return sentence }
+            start += count
+        }
+        return text.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Trims the punctuation a transcript leaves on the ends — "Ahnung," — but
+    /// keeps what sits inside a phrase.
+    static func clean(_ text: String) -> String {
+        text.trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines))
     }
 }

@@ -13,6 +13,9 @@ struct WordBrowser<Header: View>: View {
     @State private var search = ""
     @State private var selection: Item.ID?
     @State private var confirmingRemoval: Item?
+    @FocusState private var gridFocused: Bool
+    /// The word being asked about, pushed as its own screen; Back returns here.
+    @State private var asking: Item?
 
     enum Filter: String, CaseIterable, Identifiable {
         case all = "All", learning = "To learn", learned = "Learned", phrases = "Phrases", starred = "Starred"
@@ -47,50 +50,82 @@ struct WordBrowser<Header: View>: View {
     var body: some View {
         let shown = shown
 
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header()
-                    .padding(.bottom, 6)
-                HStack(spacing: 8) {
-                    ForEach(Filter.allCases.filter { $0 == .all || items.contains(where: $0.includes) }) { option in
-                        Pill(text: label(option), selected: filter == option) { filter = option }
+        ScrollViewReader { scroll in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header()
+                        .padding(.bottom, 6)
+                    HStack(spacing: 8) {
+                        ForEach(Filter.allCases.filter { $0 == .all || items.contains(where: $0.includes) }) { option in
+                            Pill(text: label(option), selected: filter == option) { filter = option }
+                        }
                     }
-                }
 
-                if shown.isEmpty {
-                    Text(search.isEmpty ? "Nothing here yet." : "No matches for “\(search)”.")
-                        .font(.rounded(15))
-                        .foregroundStyle(Palette.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 200)
-                } else {
-                    LazyVGrid(columns: columns, spacing: 14) {
-                        ForEach(shown) { item in
-                            WordCard(item: item, selected: item.id == selection)
-                                .onTapGesture { selection = item.id == selection ? nil : item.id }
-                                .contextMenu {
-                                    Button(item.status == .learned ? "Move back to learning" : "Mark as learned") {
-                                        store.setLearned(item, item.status != .learned)
+                    if shown.isEmpty {
+                        Text(search.isEmpty ? "Nothing here yet." : "No matches for “\(search)”.")
+                            .font(.rounded(15))
+                            .foregroundStyle(Palette.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 200)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 14) {
+                            ForEach(shown) { item in
+                                WordCard(item: item, selected: item.id == selection)
+                                    .id(item.id)
+                                    .onTapGesture {
+                                        selection = item.id == selection ? nil : item.id
+                                        gridFocused = true
                                     }
-                                    Button(item.starred ? "Unstar" : "Star") { store.toggleStar(item) }
-                                    Divider()
-                                    Button("Delete…", role: .destructive) { confirmingRemoval = item }
-                                }
+                                    .contextMenu {
+                                        Button(item.status == .learned ? "Move back to learning" : "Mark as learned") {
+                                            store.setLearned(item, item.status != .learned)
+                                        }
+                                        Button(item.starred ? "Unstar" : "Star") { store.toggleStar(item) }
+                                        Divider()
+                                        Button("Delete…", role: .destructive) { confirmingRemoval = item }
+                                    }
+                            }
                         }
                     }
                 }
+                .padding(32)
             }
-            .padding(32)
+            // Arrow keys step through the words in order, so reviewing a whole
+            // conversation does not mean clicking every card.
+            .focusable()
+            .focusEffectDisabled()
+            .focused($gridFocused)
+            .onKeyPress(keys: [.leftArrow, .upArrow, .rightArrow, .downArrow]) { press in
+                let back = press.key == .leftArrow || press.key == .upArrow
+                guard let next = step(back ? -1 : 1, in: shown) else { return .ignored }
+                selection = next
+                withAnimation(.easeOut(duration: 0.15)) { scroll.scrollTo(next, anchor: nil) }
+                return .handled
+            }
+            .onKeyPress(.return) {
+                guard let selected else { return .ignored }
+                asking = selected
+                return .handled
+            }
+            .onKeyPress(.escape) {
+                guard selection != nil else { return .ignored }
+                selection = nil
+                return .handled
+            }
+            .onAppear { gridFocused = true }
         }
         .background(Palette.background)
         .searchable(text: $search, placement: .toolbar, prompt: "Filter words")
         .onDeleteCommand { confirmingRemoval = selected }
         .inspector(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selection = nil } })) {
             if let item = selected {
-                WordInspector(item: item, onClose: { selection = nil }) { confirmingRemoval = item }
+                WordInspector(item: item, onClose: { selection = nil }, onAsk: { asking = item }) {
+                    confirmingRemoval = item
+                }
                     .id(item.id)
                     .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
             }
         }
+        .navigationDestination(item: $asking) { AskView(item: $0) }
         .confirmationDialog(
             "Delete “\(confirmingRemoval?.text ?? "")”?",
             isPresented: Binding(get: { confirmingRemoval != nil }, set: { if !$0 { confirmingRemoval = nil } })
@@ -104,6 +139,17 @@ struct WordBrowser<Header: View>: View {
         } message: {
             Text("It leaves the library for good, even if a browser sends it again.")
         }
+    }
+
+    /// The word `offset` places away from the selected one, or the first word
+    /// when nothing is selected yet. Stops at either end rather than wrapping.
+    private func step(_ offset: Int, in shown: [Item]) -> Item.ID? {
+        guard !shown.isEmpty else { return nil }
+        guard let current = shown.firstIndex(where: { $0.id == selection }) else {
+            return shown.first?.id
+        }
+        let target = current + offset
+        return shown.indices.contains(target) ? shown[target].id : nil
     }
 
     private func label(_ option: Filter) -> String {
@@ -146,14 +192,19 @@ private struct WordCard: View {
 
             Spacer(minLength: 8)
 
-            if let tag = item.positionLabel {
-                Text(tag)
-                    .font(.rounded(12, .bold))
-                    .foregroundStyle(Palette.secondary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .frame(height: 24)
-                    .background(Palette.raised, in: Capsule())
+            HStack(spacing: 6) {
+                if let tag = item.positionLabel {
+                    Text(tag)
+                        .font(.rounded(12, .bold))
+                        .foregroundStyle(Palette.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .frame(height: 24)
+                        .background(Palette.raised, in: Capsule())
+                }
+                if !item.register.isEmpty {
+                    RegisterTag(register: item.register, hasNote: !item.usageNote.isEmpty)
+                }
             }
         }
         .padding(16)
@@ -175,6 +226,7 @@ private struct WordInspector: View {
     @EnvironmentObject private var translations: Translations
     let item: Item
     let onClose: () -> Void
+    let onAsk: () -> Void
     let onRemove: () -> Void
 
     @State private var meaning = ""
@@ -214,6 +266,31 @@ private struct WordInspector: View {
                 }
 
                 meaningSection
+
+                Button(action: onAsk) {
+                    Label("Ask about this word", systemImage: "bubble.left.and.bubble.right.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(ProminentButtonStyle(fill: Palette.accent, ink: .white))
+                .help("Chat with the model about it — press Return from the list")
+
+                if !item.register.isEmpty || !item.usageNote.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !item.register.isEmpty {
+                            RegisterTag(register: item.register, hasNote: false)
+                        }
+                        if !item.usageNote.isEmpty {
+                            Text(item.usageNote)
+                                .font(.rounded(15))
+                                .foregroundStyle(Palette.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.warmSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
 
                 if !item.alternatives.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
@@ -311,8 +388,18 @@ private struct WordInspector: View {
     /// a translator. Either way it can be checked against the model.
     private var meaningSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Meaning").font(.rounded(13, .bold)).foregroundStyle(Palette.secondary)
-            TextField("Type it, or ask the model", text: $meaning, axis: .vertical)
+            HStack(spacing: 8) {
+                Text("Meaning").font(.rounded(13, .bold)).foregroundStyle(Palette.secondary)
+                Spacer()
+                if checking { ProgressView().controlSize(.mini) }
+                Button(item.translation.isEmpty ? "Translate" : "Retranslate", action: check)
+                    .buttonStyle(.plain)
+                    .font(.rounded(13, .semibold))
+                    .foregroundStyle(Palette.accentText)
+                    .disabled(checking)
+                    .help("Have the model translate this word again")
+            }
+            TextField("Type it, or let the model translate it", text: $meaning, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.rounded(19, .semibold))
                 .foregroundStyle(Palette.accentText)
@@ -323,33 +410,21 @@ private struct WordInspector: View {
 
             if let suggestion {
                 SuggestionCard(gloss: suggestion, agrees: agrees(suggestion)) {
-                    store.applyTranslation(suggestion.meaning, sentence: suggestion.sentence,
-                                           alternatives: suggestion.alternatives, to: item)
+                    store.apply(suggestion, to: item)
                     meaning = suggestion.meaning
                     self.suggestion = nil
                 } onKeep: {
                     // Keep your meaning, but take the extras the model offered.
-                    store.applyTranslation(item.translation, sentence: suggestion.sentence,
-                                           alternatives: suggestion.alternatives, to: item)
+                    store.apply(suggestion, meaning: item.translation, to: item)
                     self.suggestion = nil
                 }
             }
 
-            HStack(spacing: 10) {
-                Button(action: check) {
-                    HStack(spacing: 6) {
-                        if checking { ProgressView().controlSize(.small) }
-                        Text(item.translation.isEmpty ? "Ask the model" : "Check with the model")
-                    }
-                }
-                .buttonStyle(ProminentButtonStyle(fill: Palette.accentSoft, ink: Palette.accentText))
-                .disabled(checking)
-                if let checkFailed {
-                    Text(checkFailed)
-                        .font(.rounded(12))
-                        .foregroundStyle(Palette.warmText)
-                        .lineLimit(3)
-                }
+            if let checkFailed {
+                Text(checkFailed)
+                    .font(.rounded(12))
+                    .foregroundStyle(Palette.warmText)
+                    .lineLimit(3)
             }
         }
     }
@@ -375,8 +450,7 @@ private struct WordInspector: View {
                 let gloss = try await translations.check(item)
                 if item.translation.isEmpty {
                     // Nothing of yours to compare against: take it.
-                    store.applyTranslation(gloss.meaning, sentence: gloss.sentence,
-                                           alternatives: gloss.alternatives, to: item)
+                    store.apply(gloss, to: item)
                     meaning = gloss.meaning
                 } else {
                     suggestion = gloss
@@ -430,5 +504,28 @@ private struct SuggestionCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.accentSoft.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// How a word sits in today's German, for the few that are not ordinary. A
+/// dot says the model also left a note about it.
+private struct RegisterTag: View {
+    let register: String
+    let hasNote: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(register.capitalized)
+            if hasNote {
+                Circle().frame(width: 5, height: 5)
+            }
+        }
+        .font(.rounded(12, .bold))
+        .foregroundStyle(Palette.warmText)
+        .lineLimit(1)
+        .padding(.horizontal, 10)
+        .frame(height: 24)
+        .background(Palette.warmSoft, in: Capsule())
+        .help(hasNote ? "The model left a note about this word" : "")
     }
 }

@@ -123,7 +123,7 @@ struct SourceCard: View {
                         .frame(width: 26, height: 26)
                         .help("\(source.learnedCount) of \(source.itemCount) learned")
                 }
-                Text(source.title)
+                Text(source.cardTitle)
                     .font(.rounded(16, .bold))
                     .lineLimit(3)
                     .multilineTextAlignment(.leading)
@@ -136,7 +136,10 @@ struct SourceCard: View {
                     }
                     Text("\(source.itemCount) saved")
                     Spacer()
-                    Text(source.lastSavedAt.relativeDay)
+                    // Two calls with one person on one day differ only by time.
+                    Text(source.kind == .call && !source.renamed
+                         ? source.createdAt.formatted(date: .omitted, time: .shortened)
+                         : source.lastSavedAt.relativeDay)
                 }
                 .font(.rounded(13, .medium))
                 .foregroundStyle(Palette.secondary)

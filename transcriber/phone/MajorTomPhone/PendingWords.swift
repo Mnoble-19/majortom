@@ -42,9 +42,8 @@ final class PendingWords {
         sessions.first { $0.id == Self.ownSessionID }?.words ?? []
     }
 
-    func addOwn(_ text: String, translation: String, sentence: String) {
-        let word = SyncPayload.Word(text: text, sentence: sentence, position: 0,
-                                    translation: translation.isEmpty ? nil : translation)
+    func addOwn(_ text: String, sentence: String) {
+        let word = SyncPayload.Word(text: text, sentence: sentence, position: 0)
         if let index = sessions.firstIndex(where: { $0.id == Self.ownSessionID }) {
             sessions[index].words.removeAll { $0.text.caseInsensitiveCompare(text) == .orderedSame }
             sessions[index].words.append(word)

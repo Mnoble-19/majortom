@@ -196,6 +196,7 @@ struct TranslateButton: View {
 
     var body: some View {
         let waiting = store.untranslatedItems(in: scope).count
+        let unreviewed = waiting > 0 ? 0 : store.unenrichedItems(in: scope).count
 
         HStack(spacing: 12) {
             if let outcome = translations.outcome, !translations.running {
@@ -215,7 +216,7 @@ struct TranslateButton: View {
             if translations.running {
                 ProgressView(value: Double(translations.done), total: Double(max(1, translations.total)))
                     .frame(width: 80)
-                Text("Translating \(translations.done) of \(translations.total)")
+                Text("\(translations.reviewing ? "Adding notes to" : "Translating") \(translations.done) of \(translations.total)")
                     .font(.rounded(13, .semibold))
                     .foregroundStyle(Palette.secondary)
                     .monospacedDigit()
@@ -225,6 +226,12 @@ struct TranslateButton: View {
                 }
                 .buttonStyle(ProminentButtonStyle(fill: Palette.shows.fill, ink: Palette.shows.ink))
                 .help("Fill in a meaning for every word here that has none")
+            } else if unreviewed > 0 {
+                Button { translations.reviewWaiting(in: scope) } label: {
+                    Label("Add notes \(unreviewed)", systemImage: "text.magnifyingglass")
+                }
+                .buttonStyle(ProminentButtonStyle(fill: Palette.accentSoft, ink: Palette.accentText))
+                .help("Have the model add alternatives, and a usage note where one matters, keeping the meanings you have")
             }
         }
     }

@@ -7,74 +7,51 @@ import SwiftUI
 /// clicked to save it.
 struct TranscriptView: View {
     let model: SessionModel
-    /// Follow new lines only while at the bottom; scrolling up to reread
-    /// stops it until you jump back.
-    @State private var following = true
 
     var body: some View {
-        ScrollViewReader { scroll in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    Text("Click a word to save it · Shift-click another word in the line to save the phrase between")
-                        .font(.rounded(12, .semibold))
-                        .foregroundStyle(Palette.tertiary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 6)
+        FollowingScrollView(following: "\(model.lines.count) \(model.volatile)") {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                Text("Click a word to save it · Shift-click another word in the line to save the phrase between")
+                    .font(.rounded(12, .semibold))
+                    .foregroundStyle(Palette.tertiary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 6)
 
-                    if let error = model.error {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .font(.rounded(13, .medium))
-                            .foregroundStyle(Palette.warmText)
-                    }
+                if let error = model.error {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.rounded(13, .medium))
+                        .foregroundStyle(Palette.warmText)
+                }
 
-                    ForEach(model.lines) { line in
-                        Bubble {
-                            FlowLayout(spacing: 3, lineSpacing: 3) {
-                                ForEach(Array(line.text.split(separator: " ").enumerated()), id: \.offset) { index, token in
-                                    let word = String(token)
-                                    WordButton(
-                                        word: word,
-                                        isSaved: savedWords.contains(Self.bare(word)),
-                                        isPhraseStart: model.phraseStart?.line == line.id
-                                            && model.phraseStart?.index == index,
-                                        action: {
-                                            model.tap(index, in: line,
-                                                      extending: NSEvent.modifierFlags.contains(.shift))
-                                        })
-                                }
+                ForEach(model.lines) { line in
+                    Bubble {
+                        FlowLayout(spacing: 3, lineSpacing: 3) {
+                            ForEach(Array(line.text.split(separator: " ").enumerated()), id: \.offset) { index, token in
+                                let word = String(token)
+                                WordButton(
+                                    word: word,
+                                    isSaved: savedWords.contains(Self.bare(word)),
+                                    isPhraseStart: model.phraseStart?.line == line.id
+                                        && model.phraseStart?.index == index,
+                                    action: {
+                                        model.tap(index, in: line,
+                                                  extending: NSEvent.modifierFlags.contains(.shift))
+                                    })
                             }
                         }
-                        .id(line.id)
                     }
+                    .id(line.id)
+                }
 
-                    // Heard but not committed. Not clickable: it is still being
-                    // revised, so a word here can change under the click.
-                    if !model.volatile.isEmpty {
-                        Bubble(faded: true) {
-                            Text(model.volatile).font(.rounded(18)).italic()
-                        }
-                    }
-                    Color.clear.frame(height: 1).id("bottom")
-                }
-                .padding(24)
-            }
-            .trackingBottom($following)
-            .onChange(of: model.lines.count) { _, _ in
-                guard following else { return }
-                withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
-            }
-            .onChange(of: model.volatile) { _, _ in
-                guard following else { return }
-                scroll.scrollTo("bottom", anchor: .bottom)
-            }
-            .overlay(alignment: .bottom) {
-                if !following {
-                    JumpToLatestButton {
-                        withAnimation { scroll.scrollTo("bottom", anchor: .bottom) }
+                // Heard but not committed. Not clickable: it is still being
+                // revised, so a word here can change under the click.
+                if !model.volatile.isEmpty {
+                    Bubble(faded: true) {
+                        Text(model.volatile).font(.rounded(18)).italic()
                     }
                 }
             }
-            .animation(.easeOut(duration: 0.2), value: following)
+            .padding(24)
         }
     }
 

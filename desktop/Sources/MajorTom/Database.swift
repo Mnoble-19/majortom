@@ -94,6 +94,13 @@ final class Database {
             ("review_due", "TEXT"),
             // German alternatives from the model, one per line.
             ("alternatives", "TEXT NOT NULL DEFAULT ''"),
+            // How the word sits in today's German, empty when it is ordinary.
+            ("register", "TEXT NOT NULL DEFAULT ''"),
+            // A note from the model, only for words where one matters.
+            ("usage_note", "TEXT NOT NULL DEFAULT ''"),
+            // When the model last looked at the word. Words translated by the
+            // browser, or before notes existed, are still null.
+            ("enriched_at", "TEXT"),
         ]
         for (column, definition) in added where !columnExists("item", column) {
             try exec("ALTER TABLE item ADD COLUMN \(column) \(definition);")
@@ -112,6 +119,28 @@ final class Database {
                 at      TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS review_at ON review(at);
+            """)
+
+        // Conversations with the model, most about one word. Kept so a
+        // question asked while reviewing can be picked up again later.
+        try exec("""
+            CREATE TABLE IF NOT EXISTS chat (
+                id         INTEGER PRIMARY KEY,
+                item_id    INTEGER REFERENCES item(id) ON DELETE SET NULL,
+                title      TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS chat_item ON chat(item_id);
+
+            CREATE TABLE IF NOT EXISTS chat_message (
+                id      INTEGER PRIMARY KEY,
+                chat_id INTEGER NOT NULL REFERENCES chat(id) ON DELETE CASCADE,
+                role    TEXT NOT NULL,
+                content TEXT NOT NULL,
+                at      TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS chat_message_chat ON chat_message(chat_id);
             """)
     }
 
@@ -168,6 +197,7 @@ final class Database {
         func int(_ i: Int32) -> Int64 { sqlite3_column_int64(stmt, i) }
         func double(_ i: Int32) -> Double { sqlite3_column_double(stmt, i) }
         func bool(_ i: Int32) -> Bool { sqlite3_column_int64(stmt, i) != 0 }
+        func isNull(_ i: Int32) -> Bool { sqlite3_column_type(stmt, i) == SQLITE_NULL }
         func string(_ i: Int32) -> String {
             guard let c = sqlite3_column_text(stmt, i) else { return "" }
             return String(cString: c)

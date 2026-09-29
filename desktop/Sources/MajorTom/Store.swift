@@ -8,6 +8,8 @@ final class Store: ObservableObject {
     @Published private(set) var sources: [Source] = []
     @Published private(set) var stats = Stats()
     @Published private(set) var loadError: String?
+    /// Bumped when a chat changes, so the AI tab re-reads its list.
+    @Published private(set) var chatsVersion = 0
 
     private var db: Database?
     private var fingerprint = ""
@@ -17,7 +19,7 @@ final class Store: ObservableObject {
     private static let itemColumns = """
         i.id, i.source_id, s.kind, COALESCE(NULLIF(s.display_title, ''), s.title), s.url, i.kind, i.text, i.translation,
         i.context, i.context_translation, i.position, i.starred, i.status, i.created_at,
-        i.alternatives
+        i.alternatives, i.register, i.usage_note
         """
 
     init() {
@@ -124,6 +126,8 @@ final class Store: ObservableObject {
             context: r.string(8),
             contextTranslation: r.string(9),
             alternatives: r.string(14).split(separator: "\n").map(String.init),
+            register: r.string(15),
+            usageNote: r.string(16),
             position: r.double(10),
             starred: r.bool(11),
             status: ItemStatus(rawValue: r.string(12)) ?? .learning,
@@ -153,13 +157,40 @@ final class Store: ObservableObject {
 
     /// What a translator came back with. Replaces the meaning; keeps an
     /// existing sentence translation if this one has none.
-    func applyTranslation(_ meaning: String, sentence: String, alternatives: [String], to item: Item) {
+    /// Writes a translation. `byModel` is false for Apple's translator, which
+    /// has no alternatives or notes to give, so the model's earlier ones stay.
+    func applyTranslation(
+        _ meaning: String, sentence: String, alternatives: [String],
+        register: String, note: String, byModel: Bool, to item: Item
+    ) {
         write("""
             UPDATE item SET translation = ?,
                 context_translation = COALESCE(NULLIF(?, ''), context_translation),
-                alternatives = ?
+                alternatives = CASE WHEN ? THEN ? ELSE alternatives END,
+                register = CASE WHEN ? THEN ? ELSE register END,
+                usage_note = CASE WHEN ? THEN ? ELSE usage_note END,
+                enriched_at = CASE WHEN ? THEN ? ELSE enriched_at END
             WHERE id = ?
-            """, [meaning, sentence, alternatives.joined(separator: "\n"), item.id])
+            """, [meaning, sentence,
+                  byModel, alternatives.joined(separator: "\n"),
+                  byModel, register,
+                  byModel, note,
+                  byModel, ISO8601.string(),
+                  item.id])
+    }
+
+    /// Translated words the model has not looked at yet: from the browser,
+    /// which brings its own translation, or from before usage notes existed.
+    func unenrichedItems(in scope: Scope = .all) -> [Item] {
+        let waiting = "WHERE i.translation != '' AND i.enriched_at IS NULL"
+        switch scope {
+        case .all:
+            return queryItems("\(waiting) ORDER BY i.created_at DESC")
+        case .kind(let kind):
+            return queryItems("\(waiting) AND s.kind = ? ORDER BY i.created_at DESC", [kind.rawValue])
+        case .source(let source):
+            return queryItems("\(waiting) AND i.source_id = ? ORDER BY i.created_at DESC", [source.id])
+        }
     }
 
     /// Only the name shown here; an empty name goes back to the original.
@@ -236,6 +267,64 @@ final class Store: ObservableObject {
         return streak <= 1 ? day : 3 * day
     }
 
+    // MARK: - Chats
+
+    /// Every conversation with the model, most recently active first.
+    func chats() -> [ChatSummary] {
+        guard let db else { return [] }
+        return (try? db.query("""
+            SELECT c.id, c.item_id, c.title, c.updated_at, COUNT(m.id)
+            FROM chat c LEFT JOIN chat_message m ON m.chat_id = c.id
+            GROUP BY c.id
+            HAVING COUNT(m.id) > 0
+            ORDER BY c.updated_at DESC
+            """) { r in
+            ChatSummary(id: r.int(0), itemID: r.isNull(1) ? nil : r.int(1), title: r.string(2),
+                        updatedAt: r.date(3), messageCount: Int(r.int(4)))
+        }) ?? []
+    }
+
+    /// The latest conversation about a word, so asking again picks it up.
+    func chatID(for item: Item) -> Int64? {
+        try? db?.query("SELECT id FROM chat WHERE item_id = ? ORDER BY updated_at DESC LIMIT 1",
+                       [item.id]) { $0.int(0) }.first
+    }
+
+    func createChat(about item: Item?, title: String) -> Int64? {
+        let now = ISO8601.string()
+        return try? db?.run(
+            "INSERT INTO chat (item_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            [item?.id, title, now, now])
+    }
+
+    func messages(in chatID: Int64) -> [ChatMessage] {
+        (try? db?.query("SELECT id, role, content FROM chat_message WHERE chat_id = ? ORDER BY id",
+                        [chatID]) { r in
+            ChatMessage(id: r.int(0), role: ChatMessage.Role(rawValue: r.string(1)) ?? .user,
+                        content: r.string(2))
+        }) ?? []
+    }
+
+    @discardableResult
+    func addMessage(_ role: ChatMessage.Role, _ content: String, to chatID: Int64) -> ChatMessage? {
+        let now = ISO8601.string()
+        guard let id = try? db?.run(
+            "INSERT INTO chat_message (chat_id, role, content, at) VALUES (?, ?, ?, ?)",
+            [chatID, role.rawValue, content, now]) else { return nil }
+        _ = try? db?.run("UPDATE chat SET updated_at = ? WHERE id = ?", [now, chatID])
+        chatsVersion += 1
+        return ChatMessage(id: id, role: role, content: content)
+    }
+
+    func item(id: Int64) -> Item? {
+        queryItems("WHERE i.id = ?", [id]).first
+    }
+
+    func deleteChat(_ chatID: Int64) {
+        _ = try? db?.run("DELETE FROM chat WHERE id = ?", [chatID])
+        chatsVersion += 1
+    }
+
     private func write(_ sql: String, _ binds: [Any?]) {
         _ = try? db?.run(sql, binds)
         reload()
@@ -262,7 +351,7 @@ final class Store: ObservableObject {
             sources = try db.query("""
                 SELECT s.id, s.kind, COALESCE(NULLIF(s.display_title, ''), s.title), s.site, s.url, s.created_at,
                        SUM(i.kind = 'word'), SUM(i.kind = 'phrase'),
-                       MAX(i.created_at), SUM(i.status = 'learned')
+                       MAX(i.created_at), SUM(i.status = 'learned'), s.display_title != ''
                 FROM source s
                 JOIN item i ON i.source_id = s.id AND i.removed_at IS NULL
                 GROUP BY s.id
@@ -278,7 +367,8 @@ final class Store: ObservableObject {
                     wordCount: Int(r.int(6)),
                     phraseCount: Int(r.int(7)),
                     lastSavedAt: r.date(8),
-                    learnedCount: Int(r.int(9)))
+                    learnedCount: Int(r.int(9)),
+                    renamed: r.int(10) != 0)
             }
             stats = try readStats(db)
             loadError = nil
