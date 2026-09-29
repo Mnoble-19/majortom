@@ -92,11 +92,10 @@ struct MyWordsView: View {
     @EnvironmentObject private var translations: Translations
 
     @State private var text = ""
-    @State private var meaning = ""
     @State private var sentence = ""
     @FocusState private var focused: Field?
 
-    private enum Field { case text, meaning, sentence }
+    private enum Field { case text, sentence }
 
     var body: some View {
         let items = store.sources(of: .own).first.map(store.items(in:)) ?? []
@@ -117,17 +116,13 @@ struct MyWordsView: View {
             TextField("Word or phrase", text: $text)
                 .font(.rounded(26, .heavy))
                 .focused($focused, equals: .text)
-                .onSubmit { focused = .meaning }
-            TextField("Meaning — leave empty and MajorTom fills it in", text: $meaning)
-                .font(.rounded(17))
-                .focused($focused, equals: .meaning)
                 .onSubmit { focused = .sentence }
-            TextField("A sentence with it, if you have one", text: $sentence)
+            TextField("A sentence with it, if you have one — it helps pick the right meaning", text: $sentence)
                 .font(.rounded(17))
                 .focused($focused, equals: .sentence)
                 .onSubmit(add)
             HStack {
-                Text("Return moves to the next field, and adds from the last.")
+                Text("Return moves to the sentence, and adds from there. MajorTom fills in the meaning.")
                     .font(.rounded(12))
                     .foregroundStyle(Palette.tertiary)
                 Spacer()
@@ -143,12 +138,10 @@ struct MyWordsView: View {
     private func add() {
         let word = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !word.isEmpty else { return }
-        let gloss = meaning.trimmingCharacters(in: .whitespacesAndNewlines)
-        store.addOwnWord(word, translation: gloss,
+        store.addOwnWord(word, translation: "",
                          context: sentence.trimmingCharacters(in: .whitespacesAndNewlines))
-        if gloss.isEmpty { translations.translateWaiting(in: .kind(.own)) }
+        translations.translateWaiting(in: .kind(.own))
         text = ""
-        meaning = ""
         sentence = ""
         focused = .text
     }
