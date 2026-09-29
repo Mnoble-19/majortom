@@ -24,6 +24,10 @@ cp "$BIN" "$APP/Contents/MacOS/MajorTomCalls"
 cp "$ICON" "$APP/Contents/Resources/AppIcon.icns"
 cp Info.plist "$APP/Contents/Info.plist"
 
+# Baked in so words still reach data/ if the app is moved to /Applications.
+REPO="$(cd ../.. && pwd)"
+/usr/libexec/PlistBuddy -c "Add :MTRepoRoot string $REPO" "$APP/Contents/Info.plist" >/dev/null
+
 # Ad-hoc signing is enough for TCC to recognise the app across launches, so the
 # permission prompts appear once rather than every time.
 codesign --force --sign - "$APP" >/dev/null 2>&1 || true

@@ -43,8 +43,16 @@ public final class Database: @unchecked Sendable {
         return fallback.appending(path: "majortom.sqlite")
     }
 
+    /// The root `build.sh` baked into Info.plist comes first: an app copied to
+    /// /Applications is nowhere near the repo, so walking up finds nothing and
+    /// words would quietly land in the private copy instead of the library.
     private static func repoRoot() -> URL? {
         let fm = FileManager.default
+        if let baked = Bundle.main.object(forInfoDictionaryKey: "MTRepoRoot") as? String,
+           !baked.isEmpty,
+           fm.fileExists(atPath: (baked as NSString).appendingPathComponent("extension/package.json")) {
+            return URL(fileURLWithPath: baked)
+        }
         var dir = URL(fileURLWithPath: CommandLine.arguments[0])
             .resolvingSymlinksInPath()
             .deletingLastPathComponent()
