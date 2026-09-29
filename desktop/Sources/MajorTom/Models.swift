@@ -38,9 +38,19 @@ struct Source: Identifiable, Hashable {
     var phraseCount: Int
     var lastSavedAt: Date
     var learnedCount: Int
+    /// Given a name of your own in the app, which then always wins.
+    var renamed = false
 
     var itemCount: Int { wordCount + phraseCount }
     var progress: Double { itemCount == 0 ? 0 : Double(learnedCount) / Double(itemCount) }
+
+    /// What a card is labelled. Calls sit under the person already, so the
+    /// stored "Call with Lena — 2026-09-24" would only repeat it; the day is
+    /// all that tells them apart.
+    var cardTitle: String {
+        guard kind == .call, !renamed else { return title }
+        return createdAt.formatted(.dateTime.weekday(.wide).day().month(.wide))
+    }
 }
 
 /// Sources grouped by the site they came from. Derived, never stored: the

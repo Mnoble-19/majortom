@@ -262,7 +262,7 @@ final class Store: ObservableObject {
             sources = try db.query("""
                 SELECT s.id, s.kind, COALESCE(NULLIF(s.display_title, ''), s.title), s.site, s.url, s.created_at,
                        SUM(i.kind = 'word'), SUM(i.kind = 'phrase'),
-                       MAX(i.created_at), SUM(i.status = 'learned')
+                       MAX(i.created_at), SUM(i.status = 'learned'), s.display_title != ''
                 FROM source s
                 JOIN item i ON i.source_id = s.id AND i.removed_at IS NULL
                 GROUP BY s.id
@@ -278,7 +278,8 @@ final class Store: ObservableObject {
                     wordCount: Int(r.int(6)),
                     phraseCount: Int(r.int(7)),
                     lastSavedAt: r.date(8),
-                    learnedCount: Int(r.int(9)))
+                    learnedCount: Int(r.int(9)),
+                    renamed: r.int(10) != 0)
             }
             stats = try readStats(db)
             loadError = nil
