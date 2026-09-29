@@ -33,6 +33,9 @@ public enum TranslatorError: Error, CustomStringConvertible {
     case badEndpoint(String)
     case http(Int, String)
     case emptyReply
+    /// Thinking used the whole reply budget before any answer was written —
+    /// usually the model going round in circles rather than a hard word.
+    case ranOutThinking
     case implausible(String)
     case languagePackMissing
 
@@ -43,6 +46,7 @@ public enum TranslatorError: Error, CustomStringConvertible {
         case .http(let code, let body):
             return "the endpoint answered \(code)\(body.isEmpty ? "" : " — \(body)")"
         case .emptyReply: return "the model returned nothing"
+        case .ranOutThinking: return "the model thought until it ran out of room and never answered"
         case .implausible(let why): return "the model's answer was rejected — \(why)"
         case .languagePackMissing:
             return "macOS has no German→English translation installed"
@@ -147,7 +151,11 @@ public struct ModelTranslator: Sendable {
         }
 
         let reply = try JSONDecoder().decode(ChatResponse.self, from: data)
-        guard let message = reply.choices.first?.message else { throw TranslatorError.emptyReply }
+        guard let choice = reply.choices.first else { throw TranslatorError.emptyReply }
+        let message = choice.message
+        if choice.finish_reason == "length", message.content?.isEmpty != false {
+            throw TranslatorError.ranOutThinking
+        }
 
         // A reasoning model puts its answer in `content` and its thinking in
         // `reasoning_content`, but truncates into the latter if it runs out of
@@ -257,7 +265,11 @@ public struct ModelTranslator: Sendable {
 
         var body: [String: Any] = [
             "model": settings.model,
-            "temperature": 0.2,
+            // Gemma's own recommended sampling. At a low temperature a
+            // thinking model goes round in circles until it runs out of room.
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "top_k": 64,
             "max_tokens": settings.maxTokens,
             "messages": [
                 ["role": "system", "content": Self.systemPrompt],
@@ -369,6 +381,7 @@ public struct ModelTranslator: Sendable {
                 let reasoning_content: String?
             }
             let message: Message
+            let finish_reason: String?
         }
         let choices: [Choice]
     }
