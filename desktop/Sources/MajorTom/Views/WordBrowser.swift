@@ -388,8 +388,18 @@ private struct WordInspector: View {
     /// a translator. Either way it can be checked against the model.
     private var meaningSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Meaning").font(.rounded(13, .bold)).foregroundStyle(Palette.secondary)
-            TextField("Type it, or ask the model", text: $meaning, axis: .vertical)
+            HStack(spacing: 8) {
+                Text("Meaning").font(.rounded(13, .bold)).foregroundStyle(Palette.secondary)
+                Spacer()
+                if checking { ProgressView().controlSize(.mini) }
+                Button(item.translation.isEmpty ? "Translate" : "Retranslate", action: check)
+                    .buttonStyle(.plain)
+                    .font(.rounded(13, .semibold))
+                    .foregroundStyle(Palette.accentText)
+                    .disabled(checking)
+                    .help("Have the model translate this word again")
+            }
+            TextField("Type it, or let the model translate it", text: $meaning, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.rounded(19, .semibold))
                 .foregroundStyle(Palette.accentText)
@@ -410,21 +420,11 @@ private struct WordInspector: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                Button(action: check) {
-                    HStack(spacing: 6) {
-                        if checking { ProgressView().controlSize(.small) }
-                        Text(item.translation.isEmpty ? "Ask the model" : "Check with the model")
-                    }
-                }
-                .buttonStyle(ProminentButtonStyle(fill: Palette.accentSoft, ink: Palette.accentText))
-                .disabled(checking)
-                if let checkFailed {
-                    Text(checkFailed)
-                        .font(.rounded(12))
-                        .foregroundStyle(Palette.warmText)
-                        .lineLimit(3)
-                }
+            if let checkFailed {
+                Text(checkFailed)
+                    .font(.rounded(12))
+                    .foregroundStyle(Palette.warmText)
+                    .lineLimit(3)
             }
         }
     }

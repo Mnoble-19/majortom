@@ -216,7 +216,7 @@ struct TranslateButton: View {
             if translations.running {
                 ProgressView(value: Double(translations.done), total: Double(max(1, translations.total)))
                     .frame(width: 80)
-                Text("\(translations.reviewing ? "Reviewing" : "Translating") \(translations.done) of \(translations.total)")
+                Text("\(translations.reviewing ? "Adding notes to" : "Translating") \(translations.done) of \(translations.total)")
                     .font(.rounded(13, .semibold))
                     .foregroundStyle(Palette.secondary)
                     .monospacedDigit()
@@ -228,7 +228,7 @@ struct TranslateButton: View {
                 .help("Fill in a meaning for every word here that has none")
             } else if unreviewed > 0 {
                 Button { translations.reviewWaiting(in: scope) } label: {
-                    Label("Review \(unreviewed)", systemImage: "text.magnifyingglass")
+                    Label("Add notes \(unreviewed)", systemImage: "text.magnifyingglass")
                 }
                 .buttonStyle(ProminentButtonStyle(fill: Palette.accentSoft, ink: Palette.accentText))
                 .help("Have the model add alternatives, and a usage note where one matters, keeping the meanings you have")

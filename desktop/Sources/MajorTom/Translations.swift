@@ -16,7 +16,7 @@ final class Translations: ObservableObject {
         var message: String {
             switch self {
             case .translated(let n): return "Translated \(n) \(n == 1 ? "word" : "words")"
-            case .reviewed(let n): return "Reviewed \(n) \(n == 1 ? "word" : "words")"
+            case .reviewed(let n): return "Added notes to \(n) \(n == 1 ? "word" : "words")"
             case .unavailable:
                 return "No translator set up. Add a model in Settings, or German under System Settings › General › Language & Region › Translation Languages."
             case .failed(let why): return why
@@ -109,7 +109,7 @@ final class Translations: ObservableObject {
             running = false
             self.reviewing = false
             let result: Outcome = filled > 0 ? (reviewing ? .reviewed(filled) : .translated(filled))
-                : lastError.map { .failed("\(reviewing ? "Review" : "Translation") failed: \($0)") } ?? .unavailable
+                : lastError.map { .failed("\(reviewing ? "Adding notes" : "Translation") failed: \($0)") } ?? .unavailable
             outcome = result
             // A success fades on its own; a failure stays until it is fixed.
             if !result.isFailure {
