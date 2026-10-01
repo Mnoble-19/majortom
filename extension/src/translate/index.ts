@@ -156,7 +156,21 @@ export async function translateCues(opts: TranslateOptions): Promise<SecondaryLi
         }
     }
 
-    // 2. The local model, a sentence at a time, starting where you are.
+    // 2. The site's machine translation, if you would rather take it than wait
+    //    for the model. Clicked words are still looked up by the model.
+    let machine: Cue[] | null = null;
+    if (adapter?.machineTranslation) {
+        machine = await adapter.machineTranslation(target).catch(() => null);
+        if (isStale()) return empty;
+        if (machine?.length && settings.useSiteTranslation) {
+            log.info(`translation: site's machine ${target} track (${machine.length} cues)`);
+            const lines = alignByTime(cues, machine);
+            onProgress(lines, true);
+            return lines;
+        }
+    }
+
+    // 3. The local model, a sentence at a time, starting where you are.
     const {texts, cueGroup} = groupSentences(cues);
     const source = sourceCode(opts.sourceLangHint, settings);
     const cacheKey = `${media.key}|${source}|${target.split('-')[0]}`;
@@ -178,12 +192,7 @@ export async function translateCues(opts: TranslateOptions): Promise<SecondaryLi
     // The site's machine translation, where there is one, fills the line at
     // once while the model works; each sentence is swapped for the model's as
     // it lands. A cold model takes twenty seconds or more to answer at all.
-    let placeholder: SecondaryLines | null = null;
-    if (adapter?.machineTranslation) {
-        const machine = await adapter.machineTranslation(target).catch(() => null);
-        if (isStale()) return empty;
-        if (machine?.length) placeholder = alignByTime(cues, machine);
-    }
+    const placeholder: SecondaryLines | null = machine?.length ? alignByTime(cues, machine) : null;
     const expand = (): SecondaryLines => cues.map((_, i) => result[cueGroup[i]] || placeholder?.[i] || '');
 
     log.info(`translation: local model ${source || 'auto'}→${target}, ${texts.length - cached} of ${texts.length} sentences to do`);

@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: Settings = {
     autoPause: false,
     loopCue: false,
     showSecondary: true,
+    useSiteTranslation: true,
     hideNativeCaptions: true,
     fontScale: 1,
     // Where the site's own captions sit, since ours replace them. The overlay

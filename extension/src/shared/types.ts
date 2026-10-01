@@ -46,6 +46,9 @@ export interface Settings {
     /** Repeat the current line until you move on — for shadowing practice. */
     loopCue: boolean;
     showSecondary: boolean;
+    /** Take the site's own machine translation (YouTube's auto-translate) when
+     *  there is one, instead of having the local model redo it. */
+    useSiteTranslation: boolean;
     hideNativeCaptions: boolean;
     fontScale: number;
     /** Vertical offset from the bottom of the player, in % of player height. */
