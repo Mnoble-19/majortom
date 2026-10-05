@@ -4,12 +4,14 @@
 //
 //   swift make-icon.swift Resources/AppIcon.icns            the library, macOS
 //   swift make-icon.swift Calls.icns --calls                the calls app, macOS
+//   swift make-icon.swift Logs.icns --logs                  the log viewer
 //   swift make-icon.swift AppIcon.png --calls --ios         1024px, full bleed
 import AppKit
 
 let args = CommandLine.arguments.dropFirst()
 let out = args.first { !$0.hasPrefix("--") } ?? "Resources/AppIcon.icns"
 let calls = args.contains("--calls")
+let logs = args.contains("--logs")
 let ios = args.contains("--ios")
 
 func color(_ hex: UInt32, _ a: CGFloat = 1) -> CGColor {
@@ -73,7 +75,13 @@ func draw(_ size: CGFloat) -> CGImage {
         ctx.fillPath()
     }
 
-    if calls {
+    if logs {
+        let widths: [CGFloat] = [364, 280, 330, 200]
+        for (i, w) in widths.enumerated() {
+            bar(CGRect(x: 330, y: 640 - CGFloat(i) * 72, width: w, height: 40),
+                i == 1 ? color(0xFFC933) : color(0xCFC4FF))
+        }
+    } else if calls {
         let heights: [CGFloat] = [90, 170, 230, 150, 100]
         for (i, h) in heights.enumerated() {
             let x = 348 + CGFloat(i) * 70
