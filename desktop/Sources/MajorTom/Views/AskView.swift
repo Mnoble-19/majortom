@@ -211,6 +211,7 @@ struct AskView: View {
                     }
                 }
             } catch {
+                AppLog.error("ask: reply failed: \(error)")
                 failure = "\(error)"
             }
             // Kept even if you went back mid-answer, so it is there next time.
