@@ -290,6 +290,14 @@ private struct WordInspector: View {
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Palette.warmSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else if item.checked {
+                    Label("Everyday word — the model had nothing to add", systemImage: "checkmark.circle")
+                        .font(.rounded(13, .medium))
+                        .foregroundStyle(Palette.secondary)
+                } else if !item.translation.isEmpty {
+                    Label("No notes yet — use Add notes on this page", systemImage: "circle.dashed")
+                        .font(.rounded(13, .medium))
+                        .foregroundStyle(Palette.tertiary)
                 }
 
                 if !item.alternatives.isEmpty {
