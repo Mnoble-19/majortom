@@ -10,7 +10,10 @@ let isHost = args.contains { arg in
 }
 
 if isHost {
+    AppLog.start(as: "browser-sync")
     NativeHost.run()
 } else {
+    AppLog.start(as: "desktop")
+    AppLog.info("MajorTom opened")
     MajorTomApp.main()
 }

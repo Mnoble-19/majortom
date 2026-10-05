@@ -25,6 +25,7 @@ final class PhoneSync: ObservableObject {
         guard server == nil else { return }
         do {
             let server = SyncServer(database: try CallCore.Database()) { [weak self] report in
+                AppLog.info("phone sync: \(report.words) word(s) arrived")
                 Task { @MainActor in
                     self?.lastArrival = "\(report.words) \(report.words == 1 ? "word" : "words") from your phone (\(report.person))"
                     self?.onArrival()
@@ -33,7 +34,9 @@ final class PhoneSync: ObservableObject {
             try server.start()
             self.server = server
             listening = true
+            AppLog.info("listening for the phone")
         } catch {
+            AppLog.error("could not listen for the phone: \(error)")
             failure = "\(error)"
         }
     }

@@ -42,6 +42,7 @@ enum NativeHost {
                     entries: request.entries ?? [],
                     mutations: request.mutations ?? []
                 )
+                AppLog.info("browser sync: \(request.entries?.count ?? 0) entries, \(request.mutations?.count ?? 0) changes, \(written) written")
                 response = SyncResponse(ok: true, written: written, error: nil)
             case "ping":
                 response = SyncResponse(ok: true, written: 0, error: nil)
@@ -49,6 +50,7 @@ enum NativeHost {
                 response = SyncResponse(ok: false, written: nil, error: "unknown type \(request.type)")
             }
         } catch {
+            AppLog.error("browser sync failed: \(error)")
             response = SyncResponse(ok: false, written: nil, error: "\(error)")
         }
         return (try? JSONEncoder().encode(response)) ?? Data("{\"ok\":false}".utf8)

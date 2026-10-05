@@ -105,6 +105,7 @@ final class SessionModel {
                 }
             }
         } catch {
+            Log.error("start failed: \(error)")
             self.error = "\(error)"
             session = nil
         }

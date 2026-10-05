@@ -7,6 +7,11 @@ import SwiftUI
 struct MajorTomCallsApp: App {
     @State private var model = SessionModel()
 
+    init() {
+        Log.app = "calls"
+        Log.info("Calls opened")
+    }
+
     var body: some Scene {
         Window("Calls", id: "calls") {
             CallView(model: model)

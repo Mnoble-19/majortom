@@ -55,6 +55,8 @@ final class Syncer: ObservableObject {
 
         Task {
             let result = await Self.run(script: script)
+            if result.isFailure { AppLog.error("reMarkable sync: \(result.message)") }
+            else { AppLog.info("reMarkable sync: \(result.message)") }
             self.outcome = result
             self.running = false
             if case .imported = result { self.onFinish() }

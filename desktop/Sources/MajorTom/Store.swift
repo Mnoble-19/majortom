@@ -19,7 +19,7 @@ final class Store: ObservableObject {
     private static let itemColumns = """
         i.id, i.source_id, s.kind, COALESCE(NULLIF(s.display_title, ''), s.title), s.url, i.kind, i.text, i.translation,
         i.context, i.context_translation, i.position, i.starred, i.status, i.created_at,
-        i.alternatives, i.register, i.usage_note
+        i.alternatives, i.register, i.usage_note, i.enriched_at IS NOT NULL
         """
 
     init() {
@@ -128,6 +128,7 @@ final class Store: ObservableObject {
             alternatives: r.string(14).split(separator: "\n").map(String.init),
             register: r.string(15),
             usageNote: r.string(16),
+            checked: r.bool(17),
             position: r.double(10),
             starred: r.bool(11),
             status: ItemStatus(rawValue: r.string(12)) ?? .learning,

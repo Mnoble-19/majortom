@@ -72,7 +72,14 @@ public final class Session: @unchecked Sendable {
         case .whicheverAppIsPlaying: processes = AudioProcesses.likelyCall()
         case .app(let name): processes = AudioProcesses.group(name)
         }
-        guard !processes.isEmpty else { throw Failure.nothingPlaying }
+        Log.info("playing now: " + AudioProcesses.playing().map { "\($0.name) [\($0.bundleID)]" }
+            .joined(separator: ", "))
+        guard !processes.isEmpty else {
+            Log.warn("start: nothing is playing audio")
+            throw Failure.nothingPlaying
+        }
+        Log.info("start: tapping \(processes.count) process(es): "
+            + processes.map { "\($0.name) [\($0.bundleID)]" }.joined(separator: ", "))
 
         try await Transcriber.ensureModel(locale: locale)
         sourceID = try database.upsertSource(
@@ -129,6 +136,7 @@ public final class Session: @unchecked Sendable {
     /// Stops capture and drops the transcript. Saved words are already in the
     /// database by this point; nothing here writes anything.
     public func end() async {
+        Log.info("end: \(lock.withLock { lines.count }) line(s) heard")
         tap?.stop()
         try? await transcriber?.finish()
         relay?.cancel()

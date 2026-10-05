@@ -99,6 +99,9 @@ struct Item: Identifiable, Hashable {
     var register: String
     /// Only there when the model thought one was worth saying.
     var usageNote: String
+    /// The model has looked at it, so no tag or note means none was needed
+    /// rather than that it was never asked.
+    var checked: Bool
     /// Playback seconds for video, offset for calls, page for books.
     var position: Double
     var starred: Bool

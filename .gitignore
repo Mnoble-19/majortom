@@ -27,3 +27,7 @@ __pycache__/
 *.pyc
 # Zipped snapshots of each app, made by archive-builds.sh
 builds/
+
+# The log viewer
+logs/.build/
+logs/build/

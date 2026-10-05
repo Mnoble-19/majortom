@@ -70,18 +70,25 @@ final class Translations: ObservableObject {
         total = pending.count
         outcome = nil
 
+        let job = reviewing ? "add notes" : "translate"
+        AppLog.info("\(job): \(pending.count) word(s), \(Self.batchSize) a request")
+
         Task {
             var filled = 0
             var lastError: String?
             let settings = await Self.modelSettings()
+            if settings == nil { AppLog.warn("\(job): no model set up") }
 
             for batch in pending.chunked(into: Self.batchSize) {
                 var answers: [Result<Gloss, Error>]
                 if let settings {
+                    let started = Date()
                     do {
                         answers = try await ModelTranslator(settings: settings, apiKey: Settings.apiKey)
                             .glosses(batch.map(\.question))
+                        AppLog.info("\(job): batch of \(batch.count) took \(Int(-started.timeIntervalSinceNow))s")
                     } catch {
+                        AppLog.error("\(job): batch of \(batch.count) failed after \(Int(-started.timeIntervalSinceNow))s: \(error)")
                         answers = Array(repeating: .failure(error), count: batch.count)
                     }
                 } else {
@@ -100,12 +107,14 @@ final class Translations: ObservableObject {
                     case .failure(TranslatorError.notConfigured):
                         break
                     case .failure(let error):
+                        AppLog.warn("\(job): word #\(item.id) failed: \(error)")
                         lastError = "\(error)"
                     }
                     done += 1
                 }
             }
 
+            AppLog.info("\(job): done, \(filled) of \(pending.count) succeeded")
             running = false
             self.reviewing = false
             let result: Outcome = filled > 0 ? (reviewing ? .reviewed(filled) : .translated(filled))
