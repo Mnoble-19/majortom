@@ -120,12 +120,36 @@ public enum AudioProcesses {
             .filter { !isSystemService($0) }
     }
 
-    /// The app to tap, chosen without asking: whatever is playing audio. Returns
-    /// every process of that app.
+    /// The app to tap, chosen without asking: whatever is playing audio, with
+    /// a known call app beating anything else that happens to be making noise
+    /// — a video left open in a browser, say. Returns every process of that app.
     public static func likelyCall() -> [AudioProcess] {
-        guard let first = playing().first else { return [] }
-        let siblings = running().filter { $0.bundleID == first.bundleID && $0.bundleID != "" }
-        return siblings.isEmpty ? [first] : siblings
+        let candidates = playing()
+        guard let first = candidates.first(where: isCallApp) ?? candidates.first else { return [] }
+        let key = family(first.bundleID)
+        guard !key.isEmpty else { return [first] }
+        return running().filter { family($0.bundleID) == key }
+    }
+
+    /// Apps whose audio is a conversation. Matched loosely, since each ships
+    /// several processes under slightly different bundle ids.
+    private static let callApps = [
+        "discord", "whatsapp", "signal", "zoom", "teams", "facetime", "telegram",
+        "skype", "slack", "webex", "element",
+    ]
+
+    private static func isCallApp(_ process: AudioProcess) -> Bool {
+        let id = process.bundleID.lowercased(), name = process.name.lowercased()
+        return callApps.contains { id.contains($0) || name.contains($0) }
+    }
+
+    /// The app a process belongs to. Electron apps like Discord and Signal play
+    /// sound from helper processes — `com.hnc.Discord.helper.Renderer` — and
+    /// WhatsApp from `net.whatsapp.WhatsApp.ServiceExtension`; the first three
+    /// parts of the bundle id are the app itself, so tapping by them catches
+    /// whichever process the voice actually comes out of.
+    static func family(_ bundleID: String) -> String {
+        bundleID.lowercased().split(separator: ".").prefix(3).joined(separator: ".")
     }
 
     private static func isSystemService(_ process: AudioProcess) -> Bool {
