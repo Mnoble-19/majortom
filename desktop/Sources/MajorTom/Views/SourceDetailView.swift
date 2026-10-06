@@ -16,7 +16,7 @@ struct SourceDetailView: View {
         // the live copy so they move as words are learned or deleted.
         let live = store.sources.first { $0.id == source.id } ?? source
 
-        WordBrowser(items: items) {
+        WordBrowser(items: items, groupedByDay: source.kind == .book) {
             VStack(alignment: .leading, spacing: 16) {
                 BackButton()
                 header(live)

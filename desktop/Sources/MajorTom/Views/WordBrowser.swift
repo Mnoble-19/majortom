@@ -7,6 +7,9 @@ import SwiftUI
 struct WordBrowser<Header: View>: View {
     @EnvironmentObject private var store: Store
     let items: [Item]
+    /// Sections by the day each word was saved, newest first — for a book,
+    /// where the reading sessions matter more than the page.
+    var groupedByDay = false
     @ViewBuilder let header: () -> Header
 
     @State private var filter: Filter = .all
@@ -36,7 +39,8 @@ struct WordBrowser<Header: View>: View {
 
     private var shown: [Item] {
         let needle = search.trimmingCharacters(in: .whitespaces).lowercased()
-        return items.filter { item in
+        let ordered = groupedByDay ? items.sorted { $0.createdAt > $1.createdAt } : items
+        return ordered.filter { item in
             filter.includes(item) && (needle.isEmpty
                 || item.text.lowercased().contains(needle)
                 || item.translation.lowercased().contains(needle))
@@ -67,23 +71,19 @@ struct WordBrowser<Header: View>: View {
                             .foregroundStyle(Palette.secondary)
                             .frame(maxWidth: .infinity, minHeight: 200)
                     } else {
-                        LazyVGrid(columns: columns, spacing: 14) {
-                            ForEach(shown) { item in
-                                WordCard(item: item, selected: item.id == selection)
-                                    .id(item.id)
-                                    .onTapGesture {
-                                        selection = item.id == selection ? nil : item.id
-                                        gridFocused = true
+                        if groupedByDay {
+                            VStack(alignment: .leading, spacing: 28) {
+                                ForEach(days(shown), id: \.day) { group in
+                                    VStack(alignment: .leading, spacing: 14) {
+                                        SectionHeader(
+                                            title: group.day.formatted(.dateTime.weekday(.wide).day().month(.wide).year()),
+                                            trailing: "\(group.items.count) \(group.items.count == 1 ? "word" : "words")")
+                                        grid(group.items)
                                     }
-                                    .contextMenu {
-                                        Button(item.status == .learned ? "Move back to learning" : "Mark as learned") {
-                                            store.setLearned(item, item.status != .learned)
-                                        }
-                                        Button(item.starred ? "Unstar" : "Star") { store.toggleStar(item) }
-                                        Divider()
-                                        Button("Delete…", role: .destructive) { confirmingRemoval = item }
-                                    }
+                                }
                             }
+                        } else {
+                            grid(shown)
                         }
                     }
                 }
@@ -139,6 +139,39 @@ struct WordBrowser<Header: View>: View {
         } message: {
             Text("It leaves the library for good, even if a browser sends it again.")
         }
+    }
+
+    private func grid(_ items: [Item]) -> some View {
+        LazyVGrid(columns: columns, spacing: 14) {
+            ForEach(items) { item in
+                WordCard(item: item, selected: item.id == selection)
+                    .id(item.id)
+                    .onTapGesture {
+                        selection = item.id == selection ? nil : item.id
+                        gridFocused = true
+                    }
+                    .contextMenu {
+                        Button(item.status == .learned ? "Move back to learning" : "Mark as learned") {
+                            store.setLearned(item, item.status != .learned)
+                        }
+                        Button(item.starred ? "Unstar" : "Star") { store.toggleStar(item) }
+                        Divider()
+                        Button("Delete…", role: .destructive) { confirmingRemoval = item }
+                    }
+            }
+        }
+    }
+
+    /// Words split by the day they were saved, keeping their order.
+    private func days(_ items: [Item]) -> [(day: Date, items: [Item])] {
+        let calendar = Calendar.current
+        var groups: [(day: Date, items: [Item])] = []
+        for item in items {
+            let day = calendar.startOfDay(for: item.createdAt)
+            if groups.last?.day == day { groups[groups.count - 1].items.append(item) }
+            else { groups.append((day, [item])) }
+        }
+        return groups
     }
 
     /// The word `offset` places away from the selected one, or the first word
